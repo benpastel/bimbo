@@ -41,7 +41,49 @@ if [ ! -f data/train.csv ]; then
 	mv tmp/train.csv data/train.csv	
 fi
 
-if [[ $( sqlite3 bimbo.db "SELECT 1 - count(*) FROM sqlite_master WHERE type='table' AND name='train';" ) ]] ; then
+if [ `sqlite3 bimbo.db "select count(*) FROM sqlite_master WHERE type='table' AND name='train';"` -eq 0 ] ; then
 	echo "creating table..."
 	sqlite3 -echo bimbo.db < create.sql
 fi
+
+if [ ! -f data/joined.csv ]; then
+	echo "Joining data..."
+	sort -b -t, -k1 data/clients.csv > tmp/c
+	sort -b -t, -k5 data/train.csv > tmp/t
+	join -t, -1 5 -2 1 tmp/t tmp/c > tmp/joined
+
+	sort -b -t, -k1 data/products.csv > tmp/p
+	sort -b -t, -k6 tmp/joined > tmp/t2
+	join -t, -1 6 -2 1 tmp/t2 tmp/p > data/joined.csv
+fi
+
+if [ ! -d split ]; then
+	echo "Preparing to split by week"
+	mkdir split/
+	sort -g -t, -k3 data/joined.csv > split/all
+fi
+
+
+# if [ ! -d split ]; then
+# 	echo "Splitting data by week..."
+# 	mkdir split/
+# 	cp data/train.csv split/all
+
+# 	for w in `seq 3 8`; do 
+# 	
+
+# next=$((w + 1))
+# dst="split/train_$w.csv"
+
+# 	# find the first line with the next week
+# 		line=`cut -d, -f3 split/all | nl | grep $next'$' | head -1 | cut -f1`
+# 		count=$((line - 1))
+
+# 		head -$count split/all > $dst
+# 		sed "${count}d" split/all > split/tmp
+# 		mv split/tmp split/all
+
+# 	
+# 	done
+# 	mv split/all split/train_9.csv
+# fi
