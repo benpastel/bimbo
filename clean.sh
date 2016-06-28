@@ -41,6 +41,12 @@ if [ ! -f data/train.csv ]; then
 	mv tmp/train.csv data/train.csv	
 fi
 
+if [ ! -f data/test.csv ]; then
+	echo "Cleaning testing data..."
+	sed '1d' raw_data/test.csv > tmp/test.csv
+	mv tmp/test.csv data/test.csv
+fi
+
 if [ `sqlite3 bimbo.db "select count(*) FROM sqlite_master WHERE type='table' AND name='train';"` -eq 0 ] ; then
 	echo "creating table..."
 	sqlite3 -echo bimbo.db < create.sql
