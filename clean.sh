@@ -63,12 +63,16 @@ if [ ! -f data/joined.csv ]; then
 	join -t, -1 6 -2 1 tmp/t2 tmp/p > data/joined.csv
 fi
 
-if [ ! -d split ]; then
-	echo "Preparing to split by week"
-	mkdir split/
-	sort -g -t, -k3 data/joined.csv > split/all
+if [ ! -f data/slim_train.csv ]; then
+	echo "slimming training data to just the most important columns"
+	cut -d, -f1 -f5 -f6 -f11 data/train.csv > data/slim_train.csv
 fi
 
+# if [ ! -d split ]; then
+# 	echo "Preparing to split by week"
+# 	mkdir split/
+# 	sort -g -t, -k3 data/joined.csv > split/all
+# fi
 
 # if [ ! -d split ]; then
 # 	echo "Splitting data by week..."
