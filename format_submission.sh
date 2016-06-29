@@ -5,6 +5,7 @@ set -o nounset
 
 if [ "$#" -ne 1 ]; then
     echo -e "\nUsage:\n$0 [unordered csv of (id , prediction)] \n"
+    exit 1
 fi
 
 echo "id,Demanda_uni_equil" > pred/header.txt

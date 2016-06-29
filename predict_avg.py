@@ -9,6 +9,13 @@ test_ids = {} # (client_id, product_id) => {test_ids}
 sales_logsum = {} # key => sum of log(sales) in training set
 sales_count = {} # key => count of sales in training set
 
+cached_logs = {x : np.log(x) for x in range(1, 5002)}
+def log(x):
+	if x not in cached_logs:
+		print("warning: log(%s) not cached" % x)
+		return np.log(x)
+	return cached_logs[x]
+
 print("loading test set...")
 count = 0;
 with open(test_file, 'r') as f:
@@ -39,7 +46,7 @@ useful_products = 0;
 def increment(key, sales):
 	if key not in sales_logsum:
 		return False
-	sales_logsum[key] += np.log(sales)
+	sales_logsum[key] += log(sales + 1)
 	sales_count[key] += 1
 	return True
 
@@ -72,7 +79,8 @@ with open("pred/log_avgs.csv", 'w') as f:
 		product_key = "p_" + product_id
 
 		if sales_count[pair_key] > 0:
-			pred = np.exp(sales_logsum[pair_key]) / sales_count[pair_key]
+			avg = sales_logsum[pair_key] / sales_count[pair_key]
+			pred = np.exp(avg) - 1
 			pair_preds += 1
 		# elif sales_count[client_key] > 0 and sales_count[product_key] > 0:
 		# 	pred = (sales_sum[client_key] + sales_sum[product_key]) / (sales_count[client_key] + sales_count[product_key])
@@ -81,7 +89,7 @@ with open("pred/log_avgs.csv", 'w') as f:
 			pred = median_sales
 			median_preds += 1
 		for test_id in test_ids[pair_key]:
-			print("%s,%d" % (test_id, pred), file=f)
+			print("%s,%0.1f" % (test_id, pred), file=f)
 print("Prediction count: %d by pair, %d by client & product avg, %d by median" 
 	% (pair_preds, combined_preds, median_preds))
 print("Done.")
