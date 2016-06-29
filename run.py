@@ -2,48 +2,36 @@ import numpy as np
 import pandas as pd
 from random import random
 
-train_file = "data/joined.csv"
+train_file = "data/slim_train.csv"
 train_cols = (
+	"week",
 	"client_id",
 	"product_id",
-	"week",
-	"sales_depot_id",
-	"sales_channel_id",
-	"route_id",
-	"units_sold",
-	"value_sold",
-	"units_returned",
-	"value_returned",
-	"net_units_sold",
-	"client_name",
-	"product_name"
+	"net_units_sold"
 )
-
-# TODO: use only weeks that we want at a given time
-# TODO: also try sampling by client, or by product
+train_dtypes = {
+	"week": np.int8,
+	"client_id": np.int32,
+	"product_id": np.int32,
+	"net_units_sold": np.int32
+}
+train_weeks = range(3, 8)
+dev_weeks = (8, 9)
 
 total_count = 74180464
-target_sample_size = 500000
-sample_rate = float(target_sample_size) / float(total_count)
+# target_sample_size = 500000
+# sample_rate = float(target_sample_size) / float(total_count)
 
-print "sampling from training file..."
-lines = []
-with open(train_file, 'r') as f:
-	for line in f:
-		if random() < sample_rate:
-			tokens = line.strip().split(",")
-			if len(tokens) != 13:
-				print "malformed line:", line
-			else:	
-				lines.append(tokens)
-print "loaded %d samples" % len(lines)
+print "loading training file..."
+all_train = pd.read_csv(train_file, names=train_cols, dtype=train_dtypes, engine='c')
+print "loaded %d samples" % len(train)
 
-train = pd.DataFrame.from_records(lines, columns=(train_cols), 
-	index=("client_id","product_id"))
+print "splitting into train / dev..."
+train = all_train[all_train['week'].isin(train_weeks)]
+dev = all_train[all_train['week'].isin(dev_weeks)]
+print "%d in train, %d in dev" % (train, dev)
 
 
-
-# parse the data with pandas / numpy?
-
-
-
+def RMSLE(preds, actuals):
+	diffs = np.log(preds + 1) - np.log(actuals + 1)
+	return np.sqrt( np.average(diffs ** 2) )
