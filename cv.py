@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
+import os
 from models import *
 
-train_file = "data/slim_train.csv"
+train_pickle = "pickle/slim_train_df.pickle"
+dev_pickle = "pickle/slim_dev_df.pickle"
 train_cols = (
 	"week",
 	"client_id",
@@ -16,7 +18,6 @@ train_dtypes = {
 	"net_units_sold": np.int32
 }
 train_weeks = range(3, 9)
-dev_weeks = range(9, 10)
 
 model_fns = [
 	int_avg, 
@@ -28,18 +29,30 @@ def RMSLE(preds, actuals):
 	diffs = np.log(preds + 1) - np.log(actuals + 1)
 	return np.sqrt( np.average(diffs ** 2) )
 
-print "loading training file..."
-all_train = pd.read_csv(train_file, names=train_cols, dtype=train_dtypes, engine='c')
+if not os.path.isfile(train_pickle) or not os.path.isfile(dev_pickle):
+	print "loading training data from csv..."
+	weekly_data = {}
+	for week in range(3, 10):
+		with open("split/train_%d.csv" % week, 'r') as f:
+			data = pd.read_csv(f, names=train_cols, dtype=train_dtypes, engine='c')
+			data["key"] = data["client_id"].astype(np.int64) * 50000 + data["product_id"] # product_ids are < 50k
+			weekly_data[week] = data
+			print "week %d: %d lines" % (week, len(data))
 
-# the product_ids are all less than 50k
-all_train["key"] = all_train["client_id"].astype(np.int64) * 50000 + all_train["product_id"]
-print "loaded %d samples" % len(all_train)
+	dev = weekly_data[9]
+	train = pd.concat([weekly_data[w] for w in range(3, 9)])
 
-print "splitting into train / dev..."
-train = all_train[all_train['week'].isin(train_weeks)]
-dev = all_train[all_train['week'].isin(dev_weeks)]
-dev = dev.sample(n = 1000000) # downsample
-print "%d in train, %d in dev, %d total" % (len(train), len(dev), len(all_train))
+	print "saving %d train lines, %d dev lines to pickle" % (len(train), len(dev))
+	train.to_pickle(train_pickle)
+	dev.to_pickle(dev_pickle)
+
+else:
+	print "loading pickles..."
+	train = pd.read_pickle(train_pickle)
+	dev = pd.read_pickle(dev_pickle)
+
+dev = dev.sample(n = 1000000)
+print "using %d train, %d dev" % (len(train), len(dev))
 
 for model_fn in model_fns:
 	print "making predictions with " + str(model_fn) + "..."

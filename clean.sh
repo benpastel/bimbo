@@ -73,19 +73,19 @@ if [ ! -d split ]; then
 	mkdir split/
 	sort -g -t, -k1 data/slim_train.csv > split/all
 
-	for w in `seq 3 3`; do 
+	for w in `seq 3 8`; do 
 		next=$((w + 1))
 		dst="split/train_$w.csv"
 
 		# find the first line with the next week
-		line=`cut -d, -f3 split/all | nl | grep $next'$' | head -1 | cut -f1`
+		line=`cut -d, -f1 split/all | nl -w 10 | grep $next'$' | head -1 | cut -f1 | tr -d '[[:space:]]'`
 		count=$((line - 1))
 
 		echo "splitting first $count lines for week $w"
-
 		head -$count split/all > $dst
-		sed "${count}d" split/all > split/tmp
+		tail -n +$line split/all > split/tmp
 		mv split/tmp split/all
 	done
+	mv split/all split/train_9.csv
 fi
 

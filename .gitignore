@@ -3,6 +3,7 @@ raw_data/
 tmp/
 pred/
 split/
+pickle/
 *.db
 *.pyc
 .DS_Store
