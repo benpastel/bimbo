@@ -68,32 +68,24 @@ if [ ! -f data/slim_train.csv ]; then
 	cut -d, -f1 -f5 -f6 -f11 data/train.csv > data/slim_train.csv
 fi
 
-# if [ ! -d split ]; then
-# 	echo "Preparing to split by week"
-# 	mkdir split/
-# 	sort -g -t, -k3 data/joined.csv > split/all
-# fi
+if [ ! -d split ]; then
+	echo "Preparing to split train by week"
+	mkdir split/
+	sort -g -t, -k1 data/slim_train.csv > split/all
 
-# if [ ! -d split ]; then
-# 	echo "Splitting data by week..."
-# 	mkdir split/
-# 	cp data/train.csv split/all
+	for w in `seq 3 3`; do 
+		next=$((w + 1))
+		dst="split/train_$w.csv"
 
-# 	for w in `seq 3 8`; do 
-# 	
+		# find the first line with the next week
+		line=`cut -d, -f3 split/all | nl | grep $next'$' | head -1 | cut -f1`
+		count=$((line - 1))
 
-# next=$((w + 1))
-# dst="split/train_$w.csv"
+		echo "splitting first $count lines for week $w"
 
-# 	# find the first line with the next week
-# 		line=`cut -d, -f3 split/all | nl | grep $next'$' | head -1 | cut -f1`
-# 		count=$((line - 1))
+		head -$count split/all > $dst
+		sed "${count}d" split/all > split/tmp
+		mv split/tmp split/all
+	done
+fi
 
-# 		head -$count split/all > $dst
-# 		sed "${count}d" split/all > split/tmp
-# 		mv split/tmp split/all
-
-# 	
-# 	done
-# 	mv split/all split/train_9.csv
-# fi
