@@ -20,14 +20,26 @@ train_dtypes = {
 train_weeks = range(3, 9)
 
 model_fns = [
-	int_avg, 
-	simple_avg,
+	# int_avg, 
+	# simple_avg,
 	log_avg
 ]
 
 def RMSLE(preds, actuals):
 	diffs = np.log(preds + 1) - np.log(actuals + 1)
 	return np.sqrt( np.average(diffs ** 2) )
+
+def rmsle_breakdown_by_count(preds, actuals, counts):
+	for c in range(10):
+		matches = (counts == c)
+		hits = np.sum(matches)
+		rmsle = RMSLE(preds[matches], actuals[matches])
+		print "count %d: %d points, %0.4f RMSLE" % (c, hits, rmsle)
+
+	matches = (counts >= 10)
+	hits = np.sum(matches)
+	rmsle = RMSLE(preds[matches], actuals[matches])
+	print "count >= 10: %d points, %0.4f RMSLE" % (hits, rmsle)
 
 if not os.path.isfile(train_pickle) or not os.path.isfile(dev_pickle):
 	print "loading training data from csv..."
@@ -45,17 +57,19 @@ if not os.path.isfile(train_pickle) or not os.path.isfile(dev_pickle):
 	print "saving %d train lines, %d dev lines to pickle" % (len(train), len(dev))
 	train.to_pickle(train_pickle)
 	dev.to_pickle(dev_pickle)
-
 else:
 	print "loading pickles..."
 	train = pd.read_pickle(train_pickle)
 	dev = pd.read_pickle(dev_pickle)
 
-dev = dev.sample(n = 1000000)
+# dev = dev.sample(n = 1000000)
 print "using %d train, %d dev" % (len(train), len(dev))
 
 for model_fn in model_fns:
 	print "making predictions with " + str(model_fn) + "..."
-	preds = model_fn(train, dev)
-	print "RMSLE: ", RMSLE(preds, dev["net_units_sold"])
+	preds, counts = model_fn(train, dev)
+	print "total RMSLE: ", RMSLE(preds, dev["net_units_sold"])
+	rmsle_breakdown_by_count(preds, dev["net_units_sold"], counts)
+
+
 

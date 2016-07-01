@@ -47,8 +47,10 @@ def predict_avg(trains, devs, encode_fn, decode_fn):
 	hits = 0
 	misses = 0
 	preds = np.zeros(len(devs))
+	counts = np.zeros(len(devs))
 	r = 0
 	for key in devs["key"]:
+		counts[r] = sales_count[key]
 		if sales_count[key] > 0:
 			hits += 1
 			preds[r] = decode_fn(sales_sum[key], sales_count[key])
@@ -57,4 +59,4 @@ def predict_avg(trains, devs, encode_fn, decode_fn):
 			preds[r] = median
 		r += 1
 	print "hit %d pairs, fell back to median for %d" % (hits, misses)
-	return preds
+	return preds, counts
