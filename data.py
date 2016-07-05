@@ -5,6 +5,7 @@ def counts_and_avgs(groups, values):
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
 	avgs = sums / counts
+	avgs[counts == 0] = 0
 	return counts, avgs
 
 cached_logs = {x : np.log(x) for x in range(1, 5002)}
