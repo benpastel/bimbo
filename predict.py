@@ -20,7 +20,8 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 
 def predict_dev():
 	model_fns = [
-		predict_avg_with_price_factors
+		avg_pair_avg_product_factors,
+		logavg_pair_logavg_product_factors,
 	]
 	train, dev, _ = load_data(dev_sample=1000 * 1000)
 
@@ -31,21 +32,20 @@ def predict_dev():
 		rmsle_breakdown_by_count(preds, dev["net_units_sold"], counts)
 
 def predict_test():
-	model_fn = log_avg_product_factors
+	model_fn = logavg_pair_logavg_product_factors
 	train, dev, test = load_data(dev_sample=None)
 
-	# TODO: re-run test on train + dev!
-
 	print "making test predictions with " + str(model_fn) + "..."
-	preds, _ = model_fn(pd.concat(train, dev), test)
+	preds, _ = model_fn(pd.concat([train, dev]), test, "for_test")
+	if len(preds) != len(test): raise Exception("wrong prediction length")
 
-	# merge predictions with test ids
-
-	# write predictions to file
-
+	print "writing predictions to file"
+	test["predictions"] = preds
+	test.to_csv("pred/log_product_factors.csv", header = False, columns = ("id", "predictions"), index = False)
 
 if __name__ == "__main__":
-	predict_dev()
+	# predict_dev()
+	predict_test()
 
 
 
