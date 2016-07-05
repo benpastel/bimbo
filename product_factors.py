@@ -16,7 +16,7 @@ def load_product_factors(train, test, data_name):
 
 	print "finding avg price factor for each product relative to the client avg..."
 	print "\t client_avg_mask"
-	client_avg_mask = client_avgs[train.client_id.values]
+	client_avg_mask = client_avgs[train.client_key.values]
 
 	print "\t price factors"
 	price_factors = train.net_units_sold.values / client_avg_mask # TODO: deal with these inf values first

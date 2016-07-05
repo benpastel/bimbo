@@ -70,7 +70,7 @@ def load_data(dev_sample=None):
 
 		print "adding dense (client, product) pair keys"
 		print "\t finding all sparse ids"
-		sparse_pair = lambda frame: 50000 * frame.client_key.as_type(np.int64) + frame.product_id
+		sparse_pair = lambda frame: 50000 * frame.client_key.astype(np.int64) + frame.product_id
 		pairs = set(sparse_pair(train)).union(set(sparse_pair(dev))).union(set(sparse_pair(test)))
 		print "\t mapping to range(%d)" % len(pairs)
 		sparse_to_dense = {}

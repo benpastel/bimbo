@@ -62,7 +62,7 @@ def predict_avg(trains, devs, encode_fn, decode_fn):
 			preds[r] = decode_fn(sales_sum[key], sales_count[key])
 		else:
 			misses += 1
-			preds[r] = median
+			preds[r] = GLOBAL_MEDIAN
 		r += 1
 	print "hit %d pairs, fell back to median for %d" % (hits, misses)
 	return preds, counts
@@ -84,7 +84,7 @@ def predict_avg_with_price_factors(train, test, data_name):
 
 	r = 0
 	for pair, c, p, in test[["pair_key", "client_key", "product_id"]].itertuples(False):
-		counts[r] = sales_count[key]
+		counts[r] = sales_count[pair]
 		if sales_avg[pair] > 0:
 			pair_avgs += 1
 			preds[r] = sales_avg[pair]
@@ -93,7 +93,7 @@ def predict_avg_with_price_factors(train, test, data_name):
 			preds[r] = client_avgs[c] * product_factors[p]
 		else:
 			medians += 1
-			preds[r] = median
+			preds[r] = GLOBAL_MEDIAN
 		r += 1
 	print "used: %d simple avg, %d product_factor * client_avg, %d median" % (pair_avgs, factors, medians)
 	return preds, counts
