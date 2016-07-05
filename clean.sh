@@ -64,8 +64,13 @@ if [ ! -f data/joined.csv ]; then
 fi
 
 if [ ! -f data/slim_train.csv ]; then
-	echo "slimming training data to just the most important columns"
+	echo "slimming training data"
 	cut -d, -f1 -f5 -f6 -f11 data/train.csv > data/slim_train.csv
+fi
+
+if [ ! -f data/slim_test.csv ]; then
+	echo "slimming test data"
+	cut -d, -f1 -f6 -f7 data/test.csv > data/slim_test.csv
 fi
 
 if [ ! -d split ]; then
