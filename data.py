@@ -13,9 +13,8 @@ def log(x):
 	return cached_logs[x]
 
 def load_data(dev_sample=None):
-	train_pickle = "pickle/slim_train_df.pickle"
-	dev_pickle = "pickle/slim_dev_df.pickle"
-	test_pickle = "pickle/test.pickle"
+	data_pickle = "pickle/data.pickle"
+
 	train_cols = (
 		"week",
 		"client_id",
@@ -40,7 +39,7 @@ def load_data(dev_sample=None):
 	}
 	train_weeks = range(3, 9)
 
-	if not os.path.isfile(train_pickle) or not os.path.isfile(dev_pickle) or not os.path.isfile(test_pickle):
+	if not os.path.isfile(data_pickle):
 		print "loading training data from csv..."
 		weekly_data = {}
 		for week in range(3, 10):
@@ -54,6 +53,12 @@ def load_data(dev_sample=None):
 		print "loading test data from csv..."
 		test = pd.read_csv("data/slim_test.csv", names = test_cols, dtype = test_dtypes, engine='c')
 
+		print "loading client data from csv..."
+		clients = pd.read_csv("data/clients.csv", names = ("client_id", "client_name"))
+
+		print "loading product data from csv..."
+		products = pd.read_csv("data/products.csv", names = ("product_id", "product_name"))
+
 		print "remapping the client_ids as dense keys"
 		print "\t finding all sparse ids"
 		sparse_clients = set(train.client_id).union(set(dev.client_id)).union(set(test.client_id))
@@ -64,10 +69,12 @@ def load_data(dev_sample=None):
 		train["client_key"] = np.zeros(len(train), dtype = np.int32)
 		dev["client_key"] = np.zeros(len(dev), dtype = np.int32)
 		test["client_key"] = np.zeros(len(test), dtype = np.int32)
+		clients["client_key"] = np.zeros(len(clients), dtype = np.int32)
 		print "\t adding columns to dataframes"
 		for i, sparse in enumerate(train.client_id): train["client_key"].values[i] = sparse_to_dense[sparse]
 		for i, sparse in enumerate(dev.client_id): 	dev["client_key"].values[i] = sparse_to_dense[sparse]
 		for i, sparse in enumerate(test.client_id):	test["client_key"].values[i] = sparse_to_dense[sparse]
+		for i, sparse in enumerate(clients.client_id): clients["client_key"].values[i] = sparse_to_dense.get(sparse, None)
 
 		print "adding dense (client, product) pair keys"
 		print "\t finding all sparse ids"
@@ -85,26 +92,24 @@ def load_data(dev_sample=None):
 		for i, sparse in enumerate(sparse_pair(dev)): 	dev.pair_key.values[i] = sparse_to_dense[sparse]
 		for i, sparse in enumerate(sparse_pair(test)):	test.pair_key.values[i] = sparse_to_dense[sparse]
 
-		print "saving train, dev, test pickles..."
-		train.to_pickle(train_pickle)
-		dev.to_pickle(dev_pickle)
-		test.to_pickle(test_pickle)
+		print "saving data pickle..."
+		with open(data_pickle, 'w') as f:
+			pickle.dump((train, dev, test, clients, products), f)
 	else:
-		print "loading train, dev, test pickles..."
-		train = pd.read_pickle(train_pickle)
-		dev = pd.read_pickle(dev_pickle)
-		test = pd.read_pickle(test_pickle)
+		print "loading data pickle..."
+		with open(data_pickle, 'w') as f:
+			train, dev, test, clients, products = pickle.load(f)
 
 	if dev_sample:
 		dev = dev.sample(n = dev_sample)
 	
 	print "using %d train, %d dev, %d test lines" % (len(train), len(dev), len(test))
-	return train, dev, test
+	return train, dev, test, clients, products
 
 def RMSLE(preds, actuals):
 	diffs = np.log(preds + 1) - np.log(actuals + 1)
 	return np.sqrt( np.average(diffs ** 2) )
 
 if __name__ == '__main__':
-	load_data()
+	train, dev, test, clients, products = load_data()
 

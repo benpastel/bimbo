@@ -20,10 +20,11 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 
 def predict_dev():
 	model_fns = [
-		avg_pair_avg_product_factors,
+		# avg_pair_avg_product_factors,
 		logavg_pair_logavg_product_factors,
+		current
 	]
-	train, dev, _ = load_data(dev_sample=1000 * 1000)
+	train, dev, _, _, _ = load_data(dev_sample=1000 * 1000)
 
 	for model_fn in model_fns:
 		print "making dev predictions with " + str(model_fn) + "..."
@@ -33,7 +34,7 @@ def predict_dev():
 
 def predict_test():
 	model_fn = logavg_pair_logavg_product_factors
-	train, dev, test = load_data(dev_sample=None)
+	train, dev, test, clients, products = load_data(dev_sample=None)
 
 	print "making test predictions with " + str(model_fn) + "..."
 	preds, _ = model_fn(pd.concat([train, dev]), test, "for_test")
@@ -44,8 +45,8 @@ def predict_test():
 	test.to_csv("pred/log_product_factors.csv", header = False, columns = ("id", "predictions"), index = False)
 
 if __name__ == "__main__":
-	# predict_dev()
-	predict_test()
+	predict_dev()
+	# predict_test()
 
 
 
