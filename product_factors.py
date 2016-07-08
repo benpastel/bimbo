@@ -11,12 +11,12 @@ def load_product_factors(train, test, data_name):
 		with open(path, 'r') as f:
 			return pickle.load(f)
 
-	print "finding mean for each client"
-	client_counts, client_avgs = counts_and_avgs(train.client_key, train.net_units_sold)
+	print "finding log mean for each client"
+	client_avgs = train.groupby("client_id").log_avg.mean()
 
 	print "finding avg price factor for each product relative to the client avg..."
 	print "\t client_avg_mask"
-	client_avg_mask = client_avgs[train.client_key.values]
+	client_avg_mask = client_avgs[train.client_id]
 
 	print "\t price factors mask"
 	factors_mask = train.net_units_sold.values / client_avg_mask

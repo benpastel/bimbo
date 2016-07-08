@@ -65,19 +65,18 @@ fi
 
 if [ ! -f data/slim_train.csv ]; then
 	echo "slimming training data"
-	cut -d, -f1 -f5 -f6 -f11 data/train.csv > data/slim_train.csv
+	cut -d, -f1 -f2 -f5 -f6 -f11 data/train.csv > data/slim_train.csv
 fi
 
 if [ ! -f data/slim_test.csv ]; then
 	echo "slimming test data"
-	cut -d, -f1 -f6 -f7 data/test.csv > data/slim_test.csv
+	cut -d, -f1 -f3 -f6 -f7 data/test.csv > data/slim_test.csv
 fi
 
 if [ ! -d split ]; then
 	echo "Preparing to split train by week"
 	mkdir split/
 	sort -g -t, -k1 data/slim_train.csv > split/all
-
 	for w in `seq 3 8`; do 
 		next=$((w + 1))
 		dst="split/train_$w.csv"
@@ -92,5 +91,10 @@ if [ ! -d split ]; then
 		mv split/tmp split/all
 	done
 	mv split/all split/train_9.csv
+fi
+
+if [ ! -f data/no_name_clients.csv ]; then
+	echo "finding clients containing 'SIN NOMBRE'..."
+	grep 'SIN NOMBRE' data/clients.csv > data/no_name_clients.csv
 fi
 

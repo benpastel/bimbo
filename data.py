@@ -13,98 +13,84 @@ def log(x):
 	return cached_logs[x]
 
 def load_data(dev_sample=None):
-	data_pickle = "pickle/data.pickle"
-
 	train_cols = (
 		"week",
+		"depot_id",
 		"client_id",
 		"product_id",
-		"net_units_sold"
+		"sales"
 	)
 	train_dtypes = {
 		"week": np.int8,
+		"depot_id": np.int32,
 		"client_id": np.int32,
 		"product_id": np.int32,
-		"net_units_sold": np.int32
+		"sales": np.int32
 	}
 	test_cols = (
 		"id",
+		"depot_id",
 		"client_id",
 		"product_id"
 	)
 	test_dtypes = {
 		"id": np.int32,
+		"depot_id": np.int32,
 		"client_id": np.int32,
 		"product_id": np.int32
 	}
+	indices = ["client_id", "depot_id", "product_id"]
 	train_weeks = range(3, 9)
 
-	if not os.path.isfile(data_pickle):
+	if not os.path.isfile("pickle/train.pickle"):
 		print "loading training data from csv..."
 		weekly_data = {}
 		for week in range(3, 10):
 			with open("split/train_%d.csv" % week, 'r') as f:
-				data = pd.read_csv(f, names=train_cols, dtype=train_dtypes, engine='c')
+				data = pd.read_csv(f, names=train_cols, dtype=train_dtypes, index_col = indices, engine='c')
 				weekly_data[week] = data
 				print "week %d: %d lines" % (week, len(data))
 		dev = weekly_data[9]
 		train = pd.concat([weekly_data[w] for w in range(3, 9)])
 
 		print "loading test data from csv..."
-		test = pd.read_csv("data/slim_test.csv", names = test_cols, dtype = test_dtypes, engine='c')
+		test = pd.read_csv("data/slim_test.csv", names = test_cols, dtype = test_dtypes, index_col = indices, engine='c')
 
 		print "loading client data from csv..."
-		clients = pd.read_csv("data/clients.csv", names = ("client_id", "client_name"))
+		clients = pd.read_csv("data/clients.csv", names = ("client_id", "client_name"), index_col = ("client_id"))
 
 		print "loading product data from csv..."
-		products = pd.read_csv("data/products.csv", names = ("product_id", "product_name"))
+		products = pd.read_csv("data/products.csv", names = ("product_id", "product_name"), index_col = ("product_id"))
 
-		print "remapping the client_ids as dense keys"
-		print "\t finding all sparse ids"
-		sparse_clients = set(train.client_id).union(set(dev.client_id)).union(set(test.client_id))
-		print "\t mapping to range(%d)" % len(sparse_clients)
-		sparse_to_dense = {}
-		for i, sparse in enumerate(sparse_clients):
-			sparse_to_dense[sparse] = i
-		train["client_key"] = np.zeros(len(train), dtype = np.int32)
-		dev["client_key"] = np.zeros(len(dev), dtype = np.int32)
-		test["client_key"] = np.zeros(len(test), dtype = np.int32)
-		clients["client_key"] = np.zeros(len(clients), dtype = np.int32)
-		print "\t adding columns to dataframes"
-		for i, sparse in enumerate(train.client_id): train["client_key"].values[i] = sparse_to_dense[sparse]
-		for i, sparse in enumerate(dev.client_id): 	dev["client_key"].values[i] = sparse_to_dense[sparse]
-		for i, sparse in enumerate(test.client_id):	test["client_key"].values[i] = sparse_to_dense[sparse]
-		for i, sparse in enumerate(clients.client_id): clients["client_key"].values[i] = sparse_to_dense.get(sparse, None)
+		print "adding log columns"
+		train["log_sales"] = np.log(train["sales"] + 1)
+		dev["log_sales"] = np.log(dev["sales"] + 1)
 
-		print "adding dense (client, product) pair keys"
-		print "\t finding all sparse ids"
-		sparse_pair = lambda frame: 50000 * frame.client_key.astype(np.int64) + frame.product_id
-		pairs = set(sparse_pair(train)).union(set(sparse_pair(dev))).union(set(sparse_pair(test)))
-		print "\t mapping to range(%d)" % len(pairs)
-		sparse_to_dense = {}
-		for i, sparse in enumerate(pairs):
-			sparse_to_dense[sparse] = i
-		train["pair_key"] = np.zeros(len(train), dtype = np.int64)
-		dev["pair_key"] = np.zeros(len(dev), dtype = np.int64)
-		test["pair_key"] = np.zeros(len(test), dtype = np.int64)
-		print "\t adding columns to dataframes"
-		for i, sparse in enumerate(sparse_pair(train)): train.pair_key.values[i] = sparse_to_dense[sparse]
-		for i, sparse in enumerate(sparse_pair(dev)): 	dev.pair_key.values[i] = sparse_to_dense[sparse]
-		for i, sparse in enumerate(sparse_pair(test)):	test.pair_key.values[i] = sparse_to_dense[sparse]
+		print "saving data pickles..."
+		train.to_pickle("pickle/train.pickle")
+		dev.to_pickle("pickle/dev.pickle")
+		test.to_pickle("pickle/test.pickle")
+		clients.to_pickle("pickle/clients.pickle")
+		products.to_pickle("pickle/products.pickle")
 
-		print "saving data pickle..."
-		with open(data_pickle, 'w') as f:
-			pickle.dump((train, dev, test, clients, products), f)
 	else:
-		print "loading data pickle..."
-		with open(data_pickle, 'w') as f:
-			train, dev, test, clients, products = pickle.load(f)
+		print "loading data pickles..."
+		train = pd.read_pickle("pickle/train.pickle")
+		dev = pd.read_pickle("pickle/dev.pickle")
+		test = pd.read_pickle("pickle/test.pickle")
+		clients = pd.read_pickle("pickle/clients.pickle")
+		products = pd.read_pickle("pickle/products.pickle")
 
 	if dev_sample:
 		dev = dev.sample(n = dev_sample)
 	
-	print "using %d train, %d dev, %d test lines" % (len(train), len(dev), len(test))
+	print "using %d train, %d dev, %d test lines, with %d clients, %d products" % (
+		len(train), len(dev), len(test), len(clients), len(products))
 	return train, dev, test, clients, products
+
+def load_no_name_clients():
+	lines = pd.read_csv("data/no_name_clients.csv", usecols = [0])
+	return set(lines["0"])
 
 def RMSLE(preds, actuals):
 	diffs = np.log(preds + 1) - np.log(actuals + 1)

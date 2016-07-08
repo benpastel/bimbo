@@ -24,11 +24,11 @@ def predict_dev():
 		logavg_pair_logavg_product_factors,
 		current
 	]
-	train, dev, _, _, _ = load_data(dev_sample=1000 * 1000)
+	train, dev, test, clients, products = load_data(dev_sample=1000 * 1000)
 
 	for model_fn in model_fns:
 		print "making dev predictions with " + str(model_fn) + "..."
-		preds, counts = model_fn(train, dev, "for_dev")
+		preds, counts = model_fn(train, dev, clients, products, "for_dev")
 		print "total RMSLE: ", RMSLE(preds, dev["net_units_sold"])
 		rmsle_breakdown_by_count(preds, dev["net_units_sold"], counts)
 
