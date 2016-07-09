@@ -21,7 +21,8 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 def predict_dev():
 	model_fns = [
 		# avg_pair_avg_product_factors,
-		logavg_pair_logavg_product_factors,
+		# logavg_pair_logavg_product_factors,
+		reference,
 		current
 	]
 	train, dev, test, clients, products = load_data(dev_sample=1000 * 1000)
