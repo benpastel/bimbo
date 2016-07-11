@@ -5,7 +5,7 @@ def counts_and_avgs(groups, values):
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
 	avgs = sums / counts
-	avgs[counts == 0] = 0
+	avgs[counts == 0] = np.NaN
 	return counts, avgs
 
 cached_logs = {x : np.log(x) for x in range(1, 5002)}
@@ -65,6 +65,19 @@ def load_data(dev_sample=None):
 		print "adding log columns"
 		train["log_sales"] = np.log(train["sales"] + 1)
 		dev["log_sales"] = np.log(dev["sales"] + 1)
+
+		print "mapping client_id into dense client_row"
+		print "\tmapping..."
+		sparse_to_dense = {client_id : row for row, client_id in enumerate(clients.index.values)}
+		def add_client_row(frame):
+			client_rows = np.zeros(len(frame), dtype = np.int32)
+			ids = frame.index.get_level_values("client_id")
+			for i in range(len(frame)): 
+				client_rows[i] = sparse_to_dense[ids[i]]
+			frame["client_rows"] = client_rows
+		print "\ttrain..."; add_client_row(train)
+		print "\tdev..."; add_client_row(dev)
+		print "\ttest..."; add_client_row(test)
 
 		print "saving data pickles..."
 		train.to_pickle("pickle/train.pickle")

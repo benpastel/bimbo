@@ -11,32 +11,25 @@ def load_product_factors(train, test, data_name):
 		with open(path, 'r') as f:
 			return pickle.load(f)
 
-	print "finding log mean for each (client, depot)"
-	baseline_avgs = train.groupby(level=["client_id", "depot_id"]).log_sales.mean()
+	print "converting to indexless version and hashing (client, depot)"
+	no_index = train.reset_index()
+	hashes = no_index.client_id.astype(np.int64) * 30000 + no_index.depot_id
 
-	print "finding avg factors directly with agg"
+	print "finding log mean for (client, depot) (hashed version)"
+	_, baseline_avgs = counts_and_avgs(hashes, no_index.log_sales)
 
-	print "finding log mean for each (client, depot, product)"
-	product_avgs = train.groupby(level=["client_id", "depot_id", "product_id"]).log_sales.mean()
+	print "broadcasting those averages"
+	broadcast = baseline_avgs[hashes]
 
-	# TODO how to do this without iterating?
-	print "finding avg factor"
-	for (c, d, p), x in product_avgs:
+	print "finding factors"
+	factors = no_index.log_sales / broadcast
+	factors[broadcast == 0] = np.NaN
 
-
-	print "finding avg price factor for each product relative to the client avg..."
-	print "\t client_avg_mask"
-	client_avg_mask = client_avgs[train.client_id]
-
-	print "\t price factors mask"
-	factors_mask = train.log_sales.values / client_avg_mask
-	factors_mask[client_avg_mask == 0] = 0
-
-	print "\t grouping by product"
-	product_factor_counts, product_factor_avgs = counts_and_avgs(train.product_id, factors_mask)
+	print "averaging by product"
+	_, product_factors = counts_and_avgs(no_index.product_id, factors)
 
 	print "\t dumping to file"
 	with open(path, 'w') as f:
-		pickle.dump((product_factor_avgs, client_avgs), f)
+		pickle.dump((factor_avgs, baseline_avgs), f)
 
-	return product_factor_avgs, baseline_avgs
+	return factor_avgs, baseline_avgs
