@@ -2,6 +2,9 @@ import numpy as np, pandas as pd
 import pickle, os
 
 def counts_and_avgs(groups, values):
+	oks = values > 0 & ~np.isnan(values) # TODO: handle this at data loading time
+	values = values[oks] 
+	groups = groups[oks]
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
 	avgs = sums / counts
@@ -47,14 +50,14 @@ def load_data(dev_sample=None):
 		weekly_data = {}
 		for week in range(3, 10):
 			with open("split/train_%d.csv" % week, 'r') as f:
-				data = pd.read_csv(f, names=train_cols, dtype=train_dtypes, index_col = indices, engine='c')
+				data = pd.read_csv(f, names=train_cols, dtype=train_dtypes, engine='c')
 				weekly_data[week] = data
 				print "week %d: %d lines" % (week, len(data))
 		dev = weekly_data[9]
 		train = pd.concat([weekly_data[w] for w in range(3, 9)])
 
 		print "loading test data from csv..."
-		test = pd.read_csv("data/slim_test.csv", names = test_cols, dtype = test_dtypes, index_col = indices, engine='c')
+		test = pd.read_csv("data/slim_test.csv", names = test_cols, dtype = test_dtypes, engine='c')
 
 		print "loading client data from csv..."
 		clients = pd.read_csv("data/clients.csv", names = ("client_id", "client_name"), index_col = ("client_id"))
@@ -66,18 +69,34 @@ def load_data(dev_sample=None):
 		train["log_sales"] = np.log(train["sales"] + 1)
 		dev["log_sales"] = np.log(dev["sales"] + 1)
 
-		print "mapping client_id into dense client_row"
+		print "mapping client_id, depot_id, product_id into dense keys"
 		print "\tmapping..."
-		sparse_to_dense = {client_id : row for row, client_id in enumerate(clients.index.values)}
-		def add_client_row(frame):
-			client_rows = np.zeros(len(frame), dtype = np.int32)
-			ids = frame.index.get_level_values("client_id")
+		all_depots = list(set(train.depot_id.unique()).union(dev.depot_id.unique()).union(test.depot_id.unique()))
+		to_dense_client = {client_id : k for k, client_id in enumerate(clients.index.values)}
+		to_dense_product = {product_id : k for k, product_id in enumerate(products.index.values)}
+		to_dense_depot = {depot_id : k for k, depot_id in enumerate(all_depots)}
+		def densify(frame):
+			print "\t\tclients..." 
+			client_keys = np.zeros(len(frame), dtype = np.int32)
+			client_vals = frame.client_id.values
 			for i in range(len(frame)): 
-				client_rows[i] = sparse_to_dense[ids[i]]
-			frame["client_rows"] = client_rows
-		print "\ttrain..."; add_client_row(train)
-		print "\tdev..."; add_client_row(dev)
-		print "\ttest..."; add_client_row(test)
+				client_keys[i] = to_dense_client[client_vals[i]]
+			frame["client_key"] = client_keys
+			print "\t\tproducts..." 
+			product_keys = np.zeros(len(frame), dtype = np.int32)
+			product_vals = frame.product_id.values
+			for i in range(len(frame)):
+				product_keys[i] = to_dense_product[product_vals[i]]
+			frame["product_key"] = product_keys
+			print "\t\tdepots..."
+			depot_keys = np.zeros(len(frame), dtype = np.int32)
+			depot_vals = frame.depot_id.values
+			for i in range(len(frame)):	
+				depot_keys[i] = to_dense_depot[depot_vals[i]]
+			frame["depot_key"] = depot_keys
+		print "\ttrain..."; densify(train)
+		print "\tdev..."; densify(dev)
+		print "\ttest..."; densify(test)
 
 		print "saving data pickles..."
 		train.to_pickle("pickle/train.pickle")
