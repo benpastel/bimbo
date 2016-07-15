@@ -25,7 +25,7 @@ def predict_dev():
 		reference,
 		current
 	]
-	train, dev, test, clients, products = load_data(dev_sample=1000 * 1000)
+	train, dev, test, clients, products = load_data()
 
 	for model_fn in model_fns:
 		print "making dev predictions with " + str(model_fn) + "..."
@@ -35,7 +35,7 @@ def predict_dev():
 
 def predict_test():
 	model_fn = logavg_pair_logavg_product_factors
-	train, dev, test, clients, products = load_data(dev_sample=None)
+	train, dev, test, clients, products = load_data()
 
 	print "making test predictions with " + str(model_fn) + "..."
 	preds, _ = model_fn(pd.concat([train, dev]), test, "for_test")

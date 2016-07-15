@@ -32,9 +32,9 @@ def predict_current(train, test, data_name, default):
 	r = 0
 	for c, p, d in test[["client_key", "product_key", "depot_key"]].itertuples(False):
 		if (c, d, p) in triple_means:
-			counts[r] = triple_counts[c, p]
+			counts[r] = triple_counts[c, d, p]
 			simples += 1
-			preds[r] = triple_means[c, p]
+			preds[r] = triple_means[c, d, p]
 			continue
 		counts[r] = 0
 		if not np.isnan(factor_preds[r]):
@@ -50,13 +50,21 @@ def predict_current(train, test, data_name, default):
 	return preds, counts
 
 def predict_reference(train, test, data_name, default):
+	# # DEBUG
+	# train, test, _, _, _ = load_data()
+	# data_name = "debug"
+	# default = np.log(GLOBAL_MEDIAN + 1)
+
 	factor_preds = product_factor_preds(train, test, data_name)
 
 	print "finding log avgs by (client, product)"
+	pairs = train.groupby(["client_key", "product_key"])
 	print "\tcounts"
-	pair_counts = train.groupby(["client_key", "product_key"]).log_sales.count()
+	pair_counts = pairs.log_sales.count()
 	print "\tmeans"
-	pair_means = train.groupby(["client_key", "product_key"]).log_sales.mean()
+	pair_means = pairs.log_sales.mean()
+	print "\tkeys"
+	pair_keys = set(pairs.groups.keys())
 
 	print "predictions"
 	simples = 0
@@ -67,7 +75,7 @@ def predict_reference(train, test, data_name, default):
 
 	r = 0
 	for c, p, d in test[["client_key", "product_key", "depot_key"]].itertuples(False):
-		if (c, p) in pair_means:
+		if (c, p) in pair_keys:
 			counts[r] = pair_counts[c, p]
 			simples += 1
 			preds[r] = pair_means[c, p]

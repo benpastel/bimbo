@@ -17,10 +17,6 @@ def product_factor_preds(train, test, data_name):
 				raise Exception("bad save file")
 			return preds
 
-	# DEBUG
-	# train, test, _, _, _ = load_data()
-	# data_name = "for_debug"
-
 	print "training product factors"
 	print "\thashing"
 	train_hashes = hash_client_depot(train.client_key, train.depot_key)

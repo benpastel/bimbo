@@ -15,7 +15,7 @@ cached_logs = {x : np.log(x) for x in range(1, 5002)}
 def log(x):
 	return cached_logs[x]
 
-def load_data(dev_sample=None):
+def load_data():
 	train_cols = (
 		"week",
 		"depot_id",
@@ -113,8 +113,8 @@ def load_data(dev_sample=None):
 		clients = pd.read_pickle("pickle/clients.pickle")
 		products = pd.read_pickle("pickle/products.pickle")
 
-	if dev_sample:
-		dev = dev.sample(n = dev_sample)
+	# if dev_sample:
+	# 	dev = dev.sample(n = dev_sample)
 	
 	print "using %d train, %d dev, %d test lines, with %d clients, %d products" % (
 		len(train), len(dev), len(test), len(clients), len(products))
