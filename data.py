@@ -9,6 +9,8 @@ def densify(*arrays):
 	uniques, indices = np.unique(x, return_inverse=True)
 	print "\tmapped each value to a unique value in range(%d)" % len(uniques)
 
+	if len(arrays) == 1: return indices
+
 	out = []
 	last_idx = 0
 	for a in arrays:
@@ -22,9 +24,7 @@ def assert_ndarray(x):
 def counts_and_avgs(groups, values):
 	assert_ndarray(groups)
 	assert_ndarray(values)
-	oks = values > 0 & ~np.isnan(values) # TODO: handle this at data loading time
-	values2 = values[oks] 
-	groups2 = groups[oks]
+	if np.any(np.isnan(values)): raise ValueError("can't handle input NaNs in averaging")
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
 	avgs = sums / counts

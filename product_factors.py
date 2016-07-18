@@ -2,60 +2,46 @@ import numpy as np
 import pandas as pd
 import os, pickle
 
-from data import counts_and_avgs, load_data
+from data import counts_and_avgs, densify
 
-def hash_client_depot(client_key, depot_key):
-	return client_key * 552 + depot_key
+def by_product_factor_vs_client(train, test):
+	print "by (avg multiplier for product) * (client avg)"
+	return by_avg_factor(train, test, 
+		lambda frame: frame.client_key.values,
+		lambda frame: frame.product_key.values)
 
-def product_factor_preds(train, test, data_name):
-	path = "pickle/%s_product_factor_preds.pickle" % data_name
-	if os.path.isfile(path):
-		print "loading %s..." % path
-		with open(path, 'r') as f:
-			preds = pickle.load(f)
-			if len(preds) != len(test):
-				raise Exception("bad save file")
-			return preds
+def by_product_factor_vs_client_depot(train, test):
+	print "by (avg multiplier for product) * (client, depot avg)"
+	return by_avg_factor(train, test, 
+		lambda frame: frame.client_key.values.astype(np.int64) * 600 + frame.depot_key.values,
+		lambda frame: frame.product_key.values)
 
-	print "training product factors"
-	print "\thashing"
-	train_hashes = hash_client_depot(train.client_key, train.depot_key)
-	# index: training row
+def by_avg_factor(train, test, baseline_key_fn, group_key_fn):
+	print "\tdense keys"
+	train_base_keys, test_base_keys = densify(baseline_key_fn(train), baseline_key_fn(test))
+	train_group_keys, test_group_keys = densify(group_key_fn(train), group_key_fn(test))
 
-	print "\taveraging by (client, depot)"
-	_, baseline_avgs = counts_and_avgs(train_hashes, train.log_sales)
-	# index: hash value
+	print "\taverages for baselines"
+	_, base_avgs = counts_and_avgs(train_base_keys, train.log_sales.values)
 
 	print "\tbroadcasting to train"
-	baselines_for_train = baseline_avgs[train_hashes]
-	# index: training row
-	# all non-NaN, but 3176 == 0
+	train_baselines = base_avgs[train_base_keys]
 
-	print "\tfinding factors"
-	factors = train.log_sales / baselines_for_train
-	factors[baselines_for_train == 0] = np.NaN
-	# index: training row
+	print "\tfinding train factors"
+	train_factors = train.log_sales.values / train_baselines
+	train_factors[train_baselines == 0] = np.NaN
 
-	print "\taveraging by product"
-	_, product_factors = counts_and_avgs(train.product_key, factors)
-	# index: product_key
+	nans = np.isnan(train_factors)
+	print "\taveraging by group key (skipping %d NaNs)" % np.count_nonzero(nans)
+	_, group_factors = counts_and_avgs(train_group_keys[~nans], train_factors[~nans])
 
-	print "making test predictions"
-	print "\thashing"
-	test_hashes = hash_client_depot(test.client_key, test.depot_key)
-	# index: test row
-
-	print "\tbroadcasting"
-	factors_for_test = product_factors[test.product_key]
-	baselines_for_test = baseline_avgs[test_hashes]
+	print "\tbroadcasting to test"
+	test_baselines = base_avgs[test_base_keys]
+	test_factors = group_factors[test_group_keys] # this assumes all the test groups have been seen with non-NaN values
 
 	print "\tcomputing"
-	preds = factors_for_test / baselines_for_test
-
-	nans = np.count_nonzero(np.isnan(preds))
-	print "made %d predictions and %d NaNs" % ((len(preds) - nans), nans)
-
-	print "saving to", path
-	with open(path, 'w') as f:
-		pickle.dump(preds, f)
-	return preds
+	preds = test_factors * test_baselines
+	preds[test_baselines == 0] = np.NaN
+	print "%d non-NaN predictions" % np.count_nonzero(~np.isnan(preds))
+	print "\texp()"
+	return np.exp(preds) - 1

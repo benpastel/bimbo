@@ -20,7 +20,7 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 
 def predict_dev():
 	model_fns = [
-		reference,
+		# reference,
 		current
 	]
 	train, dev, test, clients, products = load_data()

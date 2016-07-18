@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
-from product_factors import product_factor_preds
+from product_factors import *
 from data import counts_and_avgs, log, load_data, load_no_name_clients, densify
 
 GLOBAL_MEDIAN = 3.0
@@ -17,7 +17,7 @@ def predict_current(train, test, clients):
 	print "current predictions"
 	print "\t%d total:" % len(test)
 	preds, counts = by_client_product(train, test)
-	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
+	preds[np.isnan(preds)] = by_product_factor_vs_client(train, test[np.isnan(preds)])
 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
 	return preds, counts
 
