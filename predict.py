@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import csv
+import sys
 
 from models import *
 from data import load_data, RMSLE
@@ -20,7 +21,7 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 
 def predict_dev():
 	model_fns = [
-		# reference,
+		reference,
 		current
 	]
 	train, dev, test, clients, products = load_data()
@@ -32,11 +33,11 @@ def predict_dev():
 		rmsle_breakdown_by_count(preds, dev.sales, counts)
 
 def predict_test():
-	model_fn = logavg_pair_logavg_product_factors
+	model_fn = reference
 	train, dev, test, clients, products = load_data()
 
 	print "making test predictions with " + str(model_fn) + "..."
-	preds, _ = model_fn(pd.concat([train, dev]), test, "for_test")
+	preds, _ = model_fn(pd.concat([train, dev]), test, clients, products, "for_test")
 	if len(preds) != len(test): raise Exception("wrong prediction length")
 
 	print "writing predictions to file"
@@ -44,8 +45,12 @@ def predict_test():
 	test.to_csv("pred/log_product_factors.csv", header = False, columns = ("id", "predictions"), index = False)
 
 if __name__ == "__main__":
-	predict_dev()
-	# predict_test()
+	if len(sys.argv) != 2 or sys.argv[1] not in {"dev", "test"}:
+		raise ValueError("usage: %s [dev|test]" % sys.argv[0])
+	if sys.argv[1] == "dev":
+		predict_dev()
+	else:
+		predict_test()
 
 
 

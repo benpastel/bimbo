@@ -17,14 +17,16 @@ def predict_current(train, test, clients):
 	print "current predictions"
 	print "\t%d total:" % len(test)
 	preds, counts = by_client_product(train, test)
-	preds[np.isnan(preds)] = by_product_factor_vs_client(train, test[np.isnan(preds)])
+	preds[np.isnan(preds)] = by_client_factor_vs_product(train, test[np.isnan(preds)])
+	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
 	return preds, counts
 
-def predict_reference(train, test):
+def predict_reference(train, test, clients):
 	print "reference predictions"
 	print "\t%d total:" % len(test)
 	preds, counts = by_client_product(train, test)
+	preds[np.isnan(preds)] = by_product_factor_vs_client(train, test[np.isnan(preds)])
 	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
 	return preds, counts
@@ -67,11 +69,9 @@ def by_clientname_product(train, test, clients):
 	
 	print "\thashing client names"
 	client_hashes = np.zeros(np.max(client_client_key) + 1, dtype=np.int64)
-
 	for r, name in enumerate(clients.client_name):
 		client_key = client_client_key[r]
 		client_hashes[client_key] = hash(name)
-	print "\tuniques before / after hashing: %d / %d" % (len(clients.client_name.unique()), len(np.unique(client_hashes)))
 
 	def key(frame, frame_client_keys):
 		return (

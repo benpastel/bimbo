@@ -10,6 +10,12 @@ def by_product_factor_vs_client(train, test):
 		lambda frame: frame.client_key.values,
 		lambda frame: frame.product_key.values)
 
+def by_client_factor_vs_product(train, test):
+	print "by (avg multiplier for client) * (product avg)"
+	return by_avg_factor(train, test, 
+		lambda frame: frame.product_key.values,
+		lambda frame: frame.client_key.values)
+
 def by_product_factor_vs_client_depot(train, test):
 	print "by (avg multiplier for product) * (client, depot avg)"
 	return by_avg_factor(train, test, 
