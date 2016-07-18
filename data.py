@@ -1,15 +1,20 @@
 import numpy as np, pandas as pd
 import pickle, os
 
-def densify(x):
+def densify(*arrays):
+	if len(arrays) > 1: print "stacking args..."
+	x = np.hstack(arrays)
+
 	print "densifying %d values..." % len(x)
 	uniques, indices = np.unique(x, return_inverse=True)
 	print "mapped each value to a unique value in range(%d)" % len(uniques)
-	return indices
 
-def densify2(x, y):
-	indices = densify(np.hstack([x, y]))
-	return indices[:len(x)], indices[len(x):]
+	out = []
+	last_idx = 0
+	for a in arrays:
+		out.append(indices[last_idx:last_idx + len(a)])
+		last_idx += len(a)
+	return out
 
 def assert_ndarray(x):
 	if not isinstance(x, np.ndarray): raise ValueError("expected ndarray, found " + str(type(x)))
