@@ -2,12 +2,12 @@ import numpy as np, pandas as pd
 import pickle, os
 
 def densify(*arrays):
-	if len(arrays) > 1: print "stacking args..."
+	if len(arrays) > 1: print "\tstacking args..."
 	x = np.hstack(arrays)
 
-	print "densifying %d values..." % len(x)
+	print "\tdensifying %d values..." % len(x)
 	uniques, indices = np.unique(x, return_inverse=True)
-	print "mapped each value to a unique value in range(%d)" % len(uniques)
+	print "\tmapped each value to a unique value in range(%d)" % len(uniques)
 
 	out = []
 	last_idx = 0
