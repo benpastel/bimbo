@@ -1,10 +1,25 @@
 import numpy as np, pandas as pd
 import pickle, os
 
+def densify(x):
+	print "densifying %d values..." % len(x)
+	uniques, indices = np.unique(x, return_inverse=True)
+	print "mapped each value to a unique value in range(%d)" % len(uniques)
+	return indices
+
+def densify2(x, y):
+	indices = densify(np.hstack([x, y]))
+	return indices[:len(x)], indices[len(x):]
+
+def assert_ndarray(x):
+	if not isinstance(x, np.ndarray): raise ValueError("expected ndarray, found " + str(type(x)))
+
 def counts_and_avgs(groups, values):
+	assert_ndarray(groups)
+	assert_ndarray(values)
 	oks = values > 0 & ~np.isnan(values) # TODO: handle this at data loading time
-	values = values[oks] 
-	groups = groups[oks]
+	values2 = values[oks] 
+	groups2 = groups[oks]
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
 	avgs = sums / counts
