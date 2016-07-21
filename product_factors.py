@@ -22,7 +22,7 @@ def by_product_factor_vs_client_depot(train, test):
 		lambda frame: frame.client_key.values.astype(np.int64) * 600 + frame.depot_key.values,
 		lambda frame: frame.product_key.values)
 
-def avg_factor_features(pool, model, test, baseline_key_fn, group_key_fn):
+def avg_factor_features(train, test, baseline_key_fn, group_key_fn):
 	print "\tdense keys"
 	train_base_keys, test_base_keys = densify(baseline_key_fn(train), baseline_key_fn(test))
 	train_group_keys, test_group_keys = densify(group_key_fn(train), group_key_fn(test))

@@ -34,7 +34,7 @@ def predict_dev():
 			rmsle_breakdown_by_count(preds, dev.sales, counts)
 
 def predict_test():
-	model_fn = reference
+	model_fn = current
 	train, dev, test, clients, products = load_data()
 
 	print "making test predictions with " + str(model_fn) + "..."
@@ -43,7 +43,7 @@ def predict_test():
 
 	print "writing predictions to file"
 	test["predictions"] = preds
-	test.to_csv("pred/log_product_factors.csv", header = False, columns = ("id", "predictions"), index = False)
+	test.to_csv("pred/output.csv", header = False, columns = ("id", "predictions"), index = False)
 
 if __name__ == "__main__":
 	if len(sys.argv) != 2 or sys.argv[1] not in {"dev", "test"}:

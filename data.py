@@ -133,9 +133,6 @@ def load_data():
 		test = pd.read_pickle("pickle/test.pickle")
 		clients = pd.read_pickle("pickle/clients.pickle")
 		products = pd.read_pickle("pickle/products.pickle")
-
-	# if dev_sample:
-	# 	dev = dev.sample(n = dev_sample)
 	
 	print "using %d train, %d dev, %d test lines, with %d clients, %d products" % (
 		len(train), len(dev), len(test), len(clients), len(products))

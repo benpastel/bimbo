@@ -4,7 +4,7 @@ import xgboost as xgb
 from sklearn.linear_model import LinearRegression
 
 from data import counts_and_avgs, load_data, densify
-# from product_factors import *
+from product_factors import *
 
 def by_xgboost(train, test):
 	print "training with XGBoost"
@@ -16,49 +16,59 @@ def by_xgboost(train, test):
 	model = xgb.XGBClassifier(subsample=0.1).fit(train_X, train_Y)
 	return model.predict(test_X)
 
+def product_client_hash(frame):
+	return frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values
+
+def product_client_depot_hash(frame):
+	return (frame.client_key.values * (3000 * 600)
+		+ frame.product_key.values * 600
+		+ frame.depot_key.values)
+
 def by_linear_regression(train, test, clients):
 	print "training linear regression"
+	features = {
+		"product_client avgs": lambda train, test: avg_by_key(train, test, product_client_hash),
+		"clientname_product avgs": lambda train, test: client_name_features(train, test, clients),
+		"product factors": lambda train, test: product_factor_vs_client_features(train, test),
+	}
 
 	print "\tsplitting train into pool & model"
 	pool = train[train.week < 8]
 	model = train[train.week == 8]
-	model = model.sample(100 * 1000)
+	model = model.sample(1000 * 1000)
 	print "\t%d in pool, %d in model" % (len(pool), len(model))
 
 	print "\tprepare features"
+	model_feats = []
+	for name, fn in features.iteritems():
+		_, model_feat = fn(pool, model)
+		model_feats.append(model_feat.reshape(-1, 1))
+	X = np.hstack(model_feats)
 
-	_, model_X1 = avg_by_key(pool, model, 
-		lambda frame: frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values)
+	nans = np.isnan(X)
+	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
+	X[nans] = np.log(4.0)
 
-	_, model_X2 = client_name_features(pool, model, clients)
-
-	# _, model_X3 = product_factor_vs_client_features(pool, model)
-
-	# TODO: also measure & report training error
-
-	model_X = np.hstack([model_X1.reshape(-1, 1), model_X2.reshape(-1, 1)])
-	nans = np.isnan(model_X)
-	print "\t using median val for %d nan features" % np.count_nonzero(nans)
-	model_X[nans] = np.log(4.0)
-
-	model_Y = model.log_sales.values.reshape(-1, 1)
+	Y = model.log_sales.values.reshape(-1, 1)
 
 	print "\tfit"
-	print "\t\tshapes: %s model_X, %s model_Y" % (model_X.shape, model_Y.shape)
-	regression = LinearRegression().fit(model_X, model_Y)
+	print "\t\tshapes: %s X, %s Y" % (X.shape, Y.shape)
+	regression = LinearRegression().fit(X, Y)
 	theta = regression.coef_[0]
 	b = regression.intercept_
 	print "\tfound theta=%s, b=%.6f" % (theta, b)
 
-	print "\tre-pooling averages with full training set"
-	_, test_X1 = avg_by_key(train, test, lambda frame: frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values)
-	_, test_X2 = client_name_features(train, test, clients)
-
-	print "\tpredict"
+	print "regenerating features with full training set and predicting"
+	i = 0
 	preds = np.full(len(test), b, dtype=np.float32)
-	for i, test_X in enumerate([test_X1, test_X2]):
-		preds += test_X * theta[i]
-	print "\tpreds has %d nans" % np.count_nonzero(np.isnan(preds))
+	for name, fn in features.iteritems():
+		_, test_feat = fn(train, test)
+		nans = np.isnan(test_feat)
+		print "\t (%s: using median val for %d nans)" % (name, np.count_nonzero(nans))
+		test_feat[nans] = np.log(4.0)
+		preds += test_feat * theta[i]
+		i += 1
+
 	print "\texp"
 	return np.exp(preds) - 1
 
@@ -97,7 +107,7 @@ def client_name_features(train, test, clients):
 	_, means = counts_and_avgs(train_keys, train.log_sales.values)
 	return means[train_keys], means[test_keys]
 
-def product_factor_vs_client_features(pool, model, test):
+def product_factor_vs_client_features(train, test):
 	print "features (avg multiplier for product) * (client avg)"
 	return avg_factor_features(train, test, 
 		lambda frame: frame.client_key.values,
