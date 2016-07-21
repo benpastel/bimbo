@@ -4,7 +4,7 @@ import os
 import csv
 import sys
 
-from models import *
+from features import *
 from data import load_data, RMSLE
 
 def rmsle_breakdown_by_count(preds, actuals, counts):

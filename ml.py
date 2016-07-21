@@ -6,15 +6,44 @@ from sklearn.linear_model import LinearRegression
 from data import counts_and_avgs, load_data, densify
 from product_factors import *
 
-def by_xgboost(train, test):
+def by_xgboost(train, test, clients):
 	print "training with XGBoost"
+	features = {
+		"product_client avgs": lambda train, test: avg_by_key(train, test, product_client_hash),
+		"clientname_product avgs": lambda train, test: client_name_features(train, test, clients),
+		"product factors": lambda train, test: product_factor_vs_client_features(train, test),
+	}
+	print "\tsplitting train into pool & fit"
+	pool = train[train.week < 8]
+	fit = train[train.week == 8]
+	fit = fit.sample(10 * 1000)
+	print "\t%d in pool, %d in model" % (len(pool), len(fit))
 
-	train_X = train[["client_id", "product_id", "depot_id"]].sample(n=1 * 1000 * 1000).as_matrix()
-	train_Y = train["sales"]
-	test_X = test[["client_id", "product_id", "depot_id"]].as_matrix()
+	print "\tprepare features"
+	fit_feats = []
+	for name, fn in features.iteritems():
+		_, fit_feat = fn(pool, fit)
+		fit_feats.append(fit_feat.reshape(-1, 1))
+	X = np.hstack(fit_feats)
 
-	model = xgb.XGBClassifier(subsample=0.1).fit(train_X, train_Y)
-	return model.predict(test_X)
+	nans = np.isnan(X)
+	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
+	X[nans] = np.log(4.0)
+	Y = fit.log_sales.values
+
+	print "\tfit"
+	model = xgb.XGBRegressor().fit(X, Y)
+	print "\tclassifier: %s" % model
+
+	print "\tpredicting"
+	test_feats = []
+	for name, fn in features.iteritems():
+		_, test_feat = fn(train, test)
+		test_feats.append(test_feat.reshape(-1, 1))
+	test_X = np.hstack(test_feats)
+	preds = model.predict(test_X)
+	print "\texp()"
+	return np.exp(preds) - 1
 
 def product_client_hash(frame):
 	return frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values

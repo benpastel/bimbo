@@ -7,8 +7,8 @@ from ml import *
 
 GLOBAL_MEDIAN = 3.0
 
-def reference(train, test, clients, products, data_name):
-	return predict_reference(train, test, clients)
+# def reference(train, test, clients, products, data_name):
+# 	return predict_reference(train, test, clients)
 
 def current(train, test, clients, products, data_name):
 	return predict_current(train, test, clients)
@@ -16,18 +16,18 @@ def current(train, test, clients, products, data_name):
 def predict_current(train, test, clients):
 	print "current predictions"
 	print "\t%d total:" % len(test)
-	preds = by_linear_regression(train, test, clients)
+	preds = by_xgboost(train, test, clients)
 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
 	return preds, None
 
-def predict_reference(train, test, clients):
-	print "reference predictions"
-	print "\t%d total:" % len(test)
-	preds, counts = by_client_product(train, test)
-	preds[np.isnan(preds)] = by_product_factor_vs_client(train, test[np.isnan(preds)])
-	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
-	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
-	return preds, counts
+# def predict_reference(train, test, clients):
+# 	print "reference predictions"
+# 	print "\t%d total:" % len(test)
+# 	preds, counts = by_client_product(train, test)
+# 	preds[np.isnan(preds)] = by_product_factor_vs_client(train, test[np.isnan(preds)])
+# 	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
+# 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
+# 	return preds, counts
 
 def by_key(train, test, key_fn):
 	print "\tbuilding keys"
