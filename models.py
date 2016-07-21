@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 
 from product_factors import *
-from data import counts_and_avgs, log, load_data, load_no_name_clients, densify
+from data import counts_and_avgs, load_data, densify
+from ml import *
 
 GLOBAL_MEDIAN = 3.0
 
@@ -16,11 +16,9 @@ def current(train, test, clients, products, data_name):
 def predict_current(train, test, clients):
 	print "current predictions"
 	print "\t%d total:" % len(test)
-	preds, counts = by_client_product(train, test)
-	preds[np.isnan(preds)] = by_client_factor_vs_product(train, test[np.isnan(preds)])
-	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
+	preds = by_linear_regression(train, test, clients)
 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
-	return preds, counts
+	return preds, None
 
 def predict_reference(train, test, clients):
 	print "reference predictions"
@@ -78,7 +76,6 @@ def by_clientname_product(train, test, clients):
 			client_hashes[frame_client_keys] * 3000
 			+ frame.product_key.values)
 	train_keys, test_keys = densify(key(train, train_client_key), key(test, test_client_key))
-	print len(train_keys), "train_keys", len(test_keys), "test_keys"
 
 	print "\tfinding means in training"
 	counts, means = counts_and_avgs(train_keys, train.log_sales.values)
@@ -89,6 +86,8 @@ def by_clientname_product(train, test, clients):
 	preds = np.exp(preds) - 1
 	print "\tmade %d non-NaN predictions" % np.count_nonzero(~np.isnan(preds))
 	return preds, counts[test_keys]
+
+
 
 
 

@@ -21,19 +21,20 @@ def densify(*arrays):
 def assert_ndarray(x):
 	if not isinstance(x, np.ndarray): raise ValueError("expected ndarray, found " + str(type(x)))
 
-def counts_and_avgs(groups, values):
+def counts_and_avgs(groups, values, max_group=None):
 	assert_ndarray(groups)
 	assert_ndarray(values)
 	if np.any(np.isnan(values)): raise ValueError("can't handle input NaNs in averaging")
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
 	avgs = sums / counts
-	avgs[counts == 0] = np.NaN
+	avgs[counts == 0] = np.nan
+	if max_group:
+		# pad the rest of the values with NaN
+		out = np.full(max_group + 1, np.nan)
+		out[:len(avgs)] = avgs
+		return counts, out
 	return counts, avgs
-
-cached_logs = {x : np.log(x) for x in range(1, 5002)}
-def log(x):
-	return cached_logs[x]
 
 def load_data():
 	train_cols = (

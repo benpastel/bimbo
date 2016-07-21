@@ -21,7 +21,7 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 
 def predict_dev():
 	model_fns = [
-		reference,
+		# reference,
 		current
 	]
 	train, dev, test, clients, products = load_data()
@@ -30,7 +30,8 @@ def predict_dev():
 		print "making dev predictions with " + str(model_fn) + "..."
 		preds, counts = model_fn(train, dev, clients, products, "for_dev")
 		print "total RMSLE: ", RMSLE(preds, dev.sales)
-		rmsle_breakdown_by_count(preds, dev.sales, counts)
+		if counts:
+			rmsle_breakdown_by_count(preds, dev.sales, counts)
 
 def predict_test():
 	model_fn = reference
