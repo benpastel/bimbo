@@ -16,7 +16,7 @@ def by_xgboost(train, test, clients):
 	print "\tsplitting train into pool & fit"
 	pool = train[train.week < 8]
 	fit = train[train.week == 8]
-	fit = fit.sample(10 * 1000)
+	fit = fit.sample(100 * 1000)
 	print "\t%d in pool, %d in model" % (len(pool), len(fit))
 
 	print "\tprepare features"
@@ -27,13 +27,18 @@ def by_xgboost(train, test, clients):
 	X = np.hstack(fit_feats)
 
 	nans = np.isnan(X)
-	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
-	X[nans] = np.log(4.0)
+	print "\t (using 0 for %d nan features)" % np.count_nonzero(nans)
+	X[nans] = 0.0
 	Y = fit.log_sales.values
 
 	print "\tfit"
-	model = xgb.XGBRegressor().fit(X, Y)
+	model = xgb.XGBRegressor(nthread=3, subsample=0.1).fit(X, Y)
 	print "\tclassifier: %s" % model
+
+	print "checking error on fit data"
+	fit_Y = model.predict(X)
+	rmse = np.sqrt( np.average( (Y - fit_Y)**2 ) )
+	print "error: %f" % rmse
 
 	print "\tpredicting"
 	test_feats = []
@@ -42,7 +47,6 @@ def by_xgboost(train, test, clients):
 		test_feats.append(test_feat.reshape(-1, 1))
 	test_X = np.hstack(test_feats)
 	preds = model.predict(test_X)
-	print "\texp()"
 	return np.exp(preds) - 1
 
 def product_client_hash(frame):
@@ -97,8 +101,6 @@ def by_linear_regression(train, test, clients):
 		test_feat[nans] = np.log(4.0)
 		preds += test_feat * theta[i]
 		i += 1
-
-	print "\texp"
 	return np.exp(preds) - 1
 
 def avg_by_key(train, test, key_fn):
@@ -113,13 +115,12 @@ def avg_by_key(train, test, key_fn):
 
 def client_name_features(train, test, clients):
 	print "\tfeatures on (client_name, product)"
-	print "\tbuilding common client keys"
 	train_client_key, test_client_key, client_client_key = densify(
 		train.client_id.values, 
 		test.client_id.values, 
 		clients.index.values)
 	
-	print "\thashing client names"
+	print "\t\thashing client names"
 	client_hashes = np.zeros(np.max(client_client_key) + 1, dtype=np.int64)
 	for r, name in enumerate(clients.client_name):
 		client_key = client_client_key[r]
