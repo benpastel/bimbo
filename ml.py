@@ -114,8 +114,7 @@ def by_xgboost(train, test, clients):
 		print "feature:", name
 		test_feats.append(fn(train, test).reshape(-1, 1))
 	test_X = np.hstack(test_feats)
-	preds = model.predict(test_X)
-	return np.exp(preds) - 1
+	return model.predict(test_X)
 
 def product_client_hash(frame):
 	return frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values
@@ -171,7 +170,7 @@ def by_linear_regression(train, test, clients):
 		test_feat[nans] = np.log(4.0)
 		preds += test_feat * theta[i]
 		i += 1
-	return np.exp(preds) - 1
+	return preds
 
 def avg_by_key(train, test, key_fn):
 	print "\tbuilding keys"

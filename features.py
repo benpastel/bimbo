@@ -38,8 +38,6 @@ def by_key(train, test, key_fn):
 
 	print "\tpredicting"
 	preds = means[test_keys]
-	print "\texp()"
-	preds = np.exp(preds) - 1
 	print "%d non-NaN" % np.count_nonzero(~np.isnan(preds))
 	return preds, counts[test_keys]
 
@@ -82,8 +80,6 @@ def by_clientname_product(train, test, clients):
 
 	print "\tpredicting"
 	preds = means[test_keys]
-	print "\texp()"
-	preds = np.exp(preds) - 1
 	print "\tmade %d non-nan predictions" % np.count_nonzero(~np.isnan(preds))
 	return preds, counts[test_keys]
 
