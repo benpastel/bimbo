@@ -29,9 +29,9 @@ def predict_dev():
 	for model_fn in model_fns:
 		print "making dev predictions with " + str(model_fn) + "..."
 		preds, counts = model_fn(train, dev, clients, products, "for_dev")
-		print "total RMSLE: %.4f" % RMSE(preds, dev.sales)
+		print "total RMSLE: %.4f" % RMSE(preds, dev.net_sales)
 		if counts:
-			rmsle_breakdown_by_count(preds, dev.sales, counts)
+			rmsle_breakdown_by_count(preds, dev.net_sales, counts)
 
 def predict_test():
 	model_fn = current
