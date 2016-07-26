@@ -25,13 +25,13 @@ def avg_factor_features(train, test, baseline_key_fn, group_key_fn):
 	train_group_keys, test_group_keys = densify(group_key_fn(train), group_key_fn(test))
 
 	print "\taverages for baselines"
-	_, base_avgs = counts_and_avgs(train_base_keys, train.log_sales.values)
+	_, base_avgs = counts_and_avgs(train_base_keys, train.net_sales.values)
 
 	print "\tbroadcasting to train"
 	train_baselines = base_avgs[train_base_keys]
 
 	print "\tfinding train factors"
-	train_factors = train.log_sales.values / train_baselines
+	train_factors = train.net_sales.values / train_baselines
 	train_factors[train_baselines == 0] = np.NaN
 
 	nans = np.isnan(train_factors)
@@ -50,13 +50,13 @@ def by_avg_factor(train, test, baseline_key_fn, group_key_fn):
 	train_group_keys, test_group_keys = densify(group_key_fn(train), group_key_fn(test))
 
 	print "\taverages for baselines"
-	_, base_avgs = counts_and_avgs(train_base_keys, train.log_sales.values)
+	_, base_avgs = counts_and_avgs(train_base_keys, train.net_sales.values)
 
 	print "\tbroadcasting to train"
 	train_baselines = base_avgs[train_base_keys]
 
 	print "\tfinding train factors"
-	train_factors = train.log_sales.values / train_baselines
+	train_factors = train.net_sales.values / train_baselines
 	train_factors[train_baselines == 0] = np.NaN
 
 	nans = np.isnan(train_factors)

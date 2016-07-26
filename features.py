@@ -34,7 +34,7 @@ def by_key(train, test, key_fn):
 	train_keys, test_keys = densify(key_fn(train), key_fn(test))
 
 	print "\tfinding log means"
-	counts, means = counts_and_avgs(train_keys, train.log_sales.values)
+	counts, means = counts_and_avgs(train_keys, train.net_sales.values)
 
 	print "\tpredicting"
 	preds = means[test_keys]
@@ -78,7 +78,7 @@ def by_clientname_product(train, test, clients):
 	train_keys, test_keys = densify(key(train, train_client_key), key(test, test_client_key))
 
 	print "\tfinding means in training"
-	counts, means = counts_and_avgs(train_keys, train.log_sales.values)
+	counts, means = counts_and_avgs(train_keys, train.net_sales.values)
 
 	print "\tpredicting"
 	preds = means[test_keys]

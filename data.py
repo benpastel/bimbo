@@ -21,8 +21,8 @@ def assert_ndarray(x):
 	if not isinstance(x, np.ndarray): raise ValueError("expected ndarray, found " + str(type(x)))
 
 def counts_and_avgs(groups, values, max_group=None):
-	if isinstance(groups, pd.Dataframe): groups = groups.values
-	if isinstance(values, pd.Dataframe): values = values.values
+	if isinstance(groups, pd.DataFrame): groups = groups.values
+	if isinstance(values, pd.DataFrame): values = values.values
 	assert_ndarray(groups); assert_ndarray(values)
 	if np.any(np.isnan(values)): raise ValueError("can't handle input NaNs in averaging")
 	counts = np.bincount(groups)
@@ -158,19 +158,20 @@ def load_data():
 		products = pd.read_pickle("pickle/products.pickle")
 
 	print "splitting train/dev..."
-	train, dev = train[train.week < 10], train[train.week >= 10]
+	dev = train[train.week == 9]
+	train = train[train.week < 9]
 	
 	print "using %d train, %d dev, %d test lines, with %d clients, %d products" % (
 		len(train), len(dev), len(test), len(clients), len(products))
 	return train, dev, test, clients, products
 
-# def load_no_name_clients():
-# 	lines = pd.read_csv("data/no_name_clients.csv", usecols = [0])
-# 	return set(lines["0"])
+def load_no_name_clients():
+	lines = pd.read_csv("data/no_name_clients.csv", usecols = [0])
+	return set(lines["0"])
 
-# def RMSLE(preds, actuals):
-# 	diffs = np.log(preds + 1) - np.log(actuals + 1)
-# 	return np.sqrt( np.average(diffs ** 2) )
+def RMSE(preds, actuals):
+	""" assumes we are already in log space """
+	return np.sqrt( np.average((preds - actuals)**2) )
 
 if __name__ == '__main__':
 	train, dev, test, clients, products = load_data()

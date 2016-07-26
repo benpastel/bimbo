@@ -6,6 +6,8 @@ from sklearn.linear_model import LinearRegression
 from data import counts_and_avgs, load_data, densify
 from product_factors import *
 
+FIT_SAMPLES = 100 * 1000
+
 def last_nonzero_logsale(train, test):
 	key_fn = product_client_hash
 	train_keys, test_keys = densify(key_fn(train), key_fn(test))
@@ -16,9 +18,9 @@ def last_nonzero_logsale(train, test):
 	test_week = extract_week(test)
 	for week in range(3, test_week):
 		# overwrite values with the most recent week
-		ok = (train.week.values == week) & (train.log_sales.values > 0)
+		ok = (train.week.values == week) & (train.net_sales.values > 0)
 		k = train_keys[ok]
-		by_key[k] = train.log_sales.values[ok]
+		by_key[k] = train.net_sales.values[ok]
 	return by_key[test_keys]
 
 # TODO: try treating different test data differently
@@ -62,7 +64,7 @@ def logsale_last_week(train, test):
 
 	print "\tlooking up vals"
 	vals = np.zeros(max_key + 1, dtype = np.int32)
-	vals[train_keys] = last_train.log_sales.values
+	vals[train_keys] = last_train.net_sales.values
 	out = vals[test_keys]
 	print "\t%d/%d nonzero vals" % (np.count_nonzero(out), len(test))
 	return out
@@ -85,7 +87,7 @@ def by_xgboost(train, test, clients):
 	print "\tsplitting train into pool & fit"
 	pool = train[train.week < 8]
 	fit = train[train.week == 8]
-	fit = fit.sample(1000 * 1000)
+	fit = fit.sample(FIT_SAMPLES)
 	print "\t%d in pool, %d in model" % (len(pool), len(fit))
 
 	print "prepare features"
@@ -94,7 +96,7 @@ def by_xgboost(train, test, clients):
 		print "feature:", name
 		fit_feats.append(fn(pool, fit).reshape(-1, 1))
 	X = np.hstack(fit_feats)
-	Y = fit.log_sales.values
+	Y = fit.net_sales.values
 
 	print "fit"
 	model = xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0)).fit(X, Y)
@@ -150,7 +152,7 @@ def by_linear_regression(train, test, clients):
 	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
 	X[nans] = np.log(4.0)
 
-	Y = model.log_sales.values.reshape(-1, 1)
+	Y = model.net_sales.values.reshape(-1, 1)
 
 	print "\tfit"
 	print "\t\tshapes: %s X, %s Y" % (X.shape, Y.shape)
@@ -177,31 +179,23 @@ def avg_by_key(train, test, key_fn):
 	max_key = max(np.max(train_keys), np.max(test_keys))
 
 	print "\tpooling log means"
-	_, means = counts_and_avgs(train_keys, train.log_sales.values, max_group = max_key)
+	_, means = counts_and_avgs(train_keys, train.net_sales.values, max_group = max_key)
 
 	return means[test_keys]
 
-def client_name_features(train, test, clients):
-	train_client_key, test_client_key, client_client_key = densify(
-		train.client_id.values, 
-		test.client_id.values, 
-		clients.index.values)
-	
+def client_name_features(train, test, clients):	
 	print "\t\thashing client names"
-	client_hashes = np.zeros(np.max(client_client_key) + 1, dtype=np.int64)
+	client_hashes = np.zeros(np.max(clients.client_key) + 1, dtype=np.int64)
 	for r, name in enumerate(clients.client_name):
-		client_key = client_client_key[r]
+		client_key = clients.client_key[r]
 		client_hashes[client_key] = hash(name)
 
-	def key(frame, frame_client_keys):
-		return (
-			client_hashes[frame_client_keys] * 3000
+	def key(frame):
+		return (client_hashes[frame.client_key] * 3000
 			+ frame.product_key.values)
-	train_keys, test_keys = densify(
-		key(train, train_client_key),
-		key(test, test_client_key))
+	train_keys, test_keys = densify(key(train), key(test))
 
-	_, means = counts_and_avgs(train_keys, train.log_sales.values)
+	_, means = counts_and_avgs(train_keys, train.net_sales.values)
 	return means[test_keys]
 
 def product_factor_vs_client_features(train, test):
