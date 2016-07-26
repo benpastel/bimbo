@@ -52,6 +52,54 @@ def weeks_since_last_sale(train, test):
 		print "\t\tweeks since last sale: %d: %d" % (ago, np.count_nonzero(out == ago))
 	return out
 
+def single_key_features():
+	names = [
+		"depot",
+		"channel", 
+		"route",
+		"client",
+		"product"]
+	def col_avg(col):
+		def feature(train, test):
+			max_key = max(train[col].max(), test[col].max())
+			print "\tmax key:", max_key
+			print "\tpooling log means"
+			_, means = counts_and_avgs(train[col], train.net_sales.values, max_group = max_key)
+			return means[test[col]]
+		return feature
+
+	builders = []
+	for name in names:
+		col = name + "_key"
+		feature_name = name + "_avg"
+		feature = col_avg(col)
+		builders.append((feature_name, feature))
+	return builders
+
+def pair_key_features():
+	names = [
+		"depot",
+		"channel", 
+		"route",
+		"client",
+		"product"]
+	builders = []
+	def pair_avg(col1, col2):
+		def feature(train, test):
+			col2_max = max(train[col2].max(), test[col2].max())
+			print "\tkey factor:", (col2_max + 1)
+			return avg_by_key(train, test, 
+				lambda frame: frame[col1].astype(np.int64) * (col2_max + 1) + frame[col2])
+		return feature
+
+	for i in range(len(names)):
+		for j in range(i, len(names)):
+			name1, name2 = names[i], names[j]
+			feature_name = "%s_%s_avg" % (name1, name2)
+			col1, col2 = name1 + "_key", name2 + "_key"
+			builders.append((feature_name, pair_avg(col1, col2)))
+	return builders
+
 def logsale_last_week(train, test):
 	key_fn = product_client_hash
 	week = extract_week(test) - 1
@@ -72,17 +120,12 @@ def logsale_last_week(train, test):
 def by_xgboost(train, test, clients):
 	print "training with XGBoost"
 
-	features = [
+	features = pair_key_features() + single_key_features() + [
 		("last_nonzero_logsale", last_nonzero_logsale),
 		("weeks_since_last_sale", weeks_since_last_sale),
 		("logsale_last_week", logsale_last_week),
-		("product_client avgs", lambda train, test: avg_by_key(train, test, product_client_hash)),
 		("clientname_product avgs", lambda train, test: client_name_features(train, test, clients)),
 		("product factors", lambda train, test: product_factor_vs_client_features(train, test)),
-		("depot_avg", lambda train, test: avg_by_key(train, test, lambda frame:frame.depot_key)),
-		("product_avg", lambda train, test: avg_by_key(train, test, lambda frame:frame.product_key)),
-		("client_avg", lambda train, test: avg_by_key(train, test, lambda frame:frame.client_key)),
-		("product_depot_avg", lambda train, test: avg_by_key(train, test, product_depot_hash)),
 	]
 	print "\tsplitting train into pool & fit"
 	pool = train[train.week < 8]
@@ -176,6 +219,7 @@ def avg_by_key(train, test, key_fn):
 	print "\tbuilding keys"
 	train_keys, test_keys = densify(key_fn(train), key_fn(test))
 	max_key = max(np.max(train_keys), np.max(test_keys))
+	print "\tmax key:", max_key
 
 	print "\tpooling log means"
 	_, means = counts_and_avgs(train_keys, train.net_sales.values, max_group = max_key)

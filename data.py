@@ -21,8 +21,8 @@ def assert_ndarray(x):
 	if not isinstance(x, np.ndarray): raise ValueError("expected ndarray, found " + str(type(x)))
 
 def counts_and_avgs(groups, values, max_group=None):
-	if isinstance(groups, pd.DataFrame): groups = groups.values
-	if isinstance(values, pd.DataFrame): values = values.values
+	if isinstance(groups, pd.Series): groups = groups.values
+	if isinstance(values, pd.Series): values = values.values
 	assert_ndarray(groups); assert_ndarray(values)
 	if np.any(np.isnan(values)): raise ValueError("can't handle input NaNs in averaging")
 	counts = np.bincount(groups)
