@@ -13,7 +13,7 @@ def densify(*arrays):
 	out = []
 	last_idx = 0
 	for a in arrays:
-		out.append(indices[last_idx:last_idx + len(a)])
+		out.append(indices[last_idx:last_idx + len(a)].astype(np.int32))
 		last_idx += len(a)
 	return out
 
@@ -21,8 +21,9 @@ def assert_ndarray(x):
 	if not isinstance(x, np.ndarray): raise ValueError("expected ndarray, found " + str(type(x)))
 
 def counts_and_avgs(groups, values, max_group=None):
-	assert_ndarray(groups)
-	assert_ndarray(values)
+	if isinstance(groups, pd.Dataframe): groups = groups.values
+	if isinstance(values, pd.Dataframe): values = values.values
+	assert_ndarray(groups); assert_ndarray(values)
 	if np.any(np.isnan(values)): raise ValueError("can't handle input NaNs in averaging")
 	counts = np.bincount(groups)
 	sums = np.bincount(groups, values)
@@ -35,115 +36,141 @@ def counts_and_avgs(groups, values, max_group=None):
 		return counts, out
 	return counts, avgs
 
+# def maxmax(*arrays):
+# 	best = np.max(arrays[0])
+# 	for i in range(1, len(arrays)):
+# 		best = max(best, arrays[i])
+# 	return best
+
 def load_data():
 	train_cols = (
 		"week",
 		"depot_id",
+		"channel_id", 
+		"route_id",
 		"client_id",
 		"product_id",
-		"sales"
+		"raw_sales_units",
+		"raw_sales_pesos",
+		"return_units",
+		"return_pesos",
+		"net_sales"
 	)
 	train_dtypes = {
 		"week": np.int8,
 		"depot_id": np.int32,
+		"channel_id": np.int32,
+		"route_id": np.int32,
 		"client_id": np.int32,
 		"product_id": np.int32,
-		"sales": np.int32
+		"raw_sales_units": np.int32,
+		"raw_sales_pesos": np.float32,
+		"return_units": np.int32,
+		"return_pesos": np.float32,
+		"net_sales_units": np.int32
 	}
 	test_cols = (
 		"id",
 		"depot_id",
+		"channel_id", 
+		"route_id",
 		"client_id",
 		"product_id"
 	)
 	test_dtypes = {
 		"id": np.int32,
 		"depot_id": np.int32,
+		"channel_id": np.int32,
+		"route_id": np.int32,
 		"client_id": np.int32,
 		"product_id": np.int32
 	}
-	indices = ["client_id", "depot_id", "product_id"]
-	train_weeks = range(3, 9)
 
 	if not os.path.isfile("pickle/train.pickle"):
 		print "loading training data from csv..."
-		weekly_data = {}
-		for week in range(3, 10):
-			with open("split/train_%d.csv" % week, 'r') as f:
-				data = pd.read_csv(f, names=train_cols, dtype=train_dtypes, engine='c')
-				weekly_data[week] = data
-				print "week %d: %d lines" % (week, len(data))
-		dev = weekly_data[9]
-		train = pd.concat([weekly_data[w] for w in range(3, 9)])
+		with open("data/train.csv", 'r') as f:
+			train = pd.read_csv(f, names=train_cols, dtype=train_dtypes, engine='c')
 
 		print "loading test data from csv..."
-		test = pd.read_csv("data/slim_test.csv", names = test_cols, dtype = test_dtypes, engine='c')
+		test = pd.read_csv("data/test.csv", names = test_cols, dtype = test_dtypes, engine='c')
 
 		print "loading client data from csv..."
-		clients = pd.read_csv("data/clients.csv", names = ("client_id", "client_name"), index_col = ("client_id"))
+		clients = pd.read_csv("data/clients.csv", names = ("client_id", "client_name"))
 
 		print "loading product data from csv..."
-		products = pd.read_csv("data/products.csv", names = ("product_id", "product_name"), index_col = ("product_id"))
+		products = pd.read_csv("data/products.csv", names = ("product_id", "product_name"))
 
-		print "adding log columns"
-		train["log_sales"] = np.log(train["sales"] + 1)
-		dev["log_sales"] = np.log(dev["sales"] + 1)
+		print "converting everything to log units. remember to convert back before final prediction :-)"
+		for col in (
+			"raw_sales_units",
+			"raw_sales_pesos",
+			"return_units",
+			"return_pesos",
+			"net_sales"):
+			train[col] = np.log(train[col] + 1).astype(np.float32)
 
-		print "mapping client_id, depot_id, product_id into dense keys"
-		print "\tmapping..."
-		all_depots = list(set(train.depot_id.unique()).union(dev.depot_id.unique()).union(test.depot_id.unique()))
-		to_dense_client = {client_id : k for k, client_id in enumerate(clients.index.values)}
-		to_dense_product = {product_id : k for k, product_id in enumerate(products.index.values)}
-		to_dense_depot = {depot_id : k for k, depot_id in enumerate(all_depots)}
-		def densify(frame):
-			print "\t\tclients..." 
-			client_keys = np.zeros(len(frame), dtype = np.int32)
-			client_vals = frame.client_id.values
-			for i in range(len(frame)): 
-				client_keys[i] = to_dense_client[client_vals[i]]
-			frame["client_key"] = client_keys
-			print "\t\tproducts..." 
-			product_keys = np.zeros(len(frame), dtype = np.int32)
-			product_vals = frame.product_id.values
-			for i in range(len(frame)):
-				product_keys[i] = to_dense_product[product_vals[i]]
-			frame["product_key"] = product_keys
-			print "\t\tdepots..."
-			depot_keys = np.zeros(len(frame), dtype = np.int32)
-			depot_vals = frame.depot_id.values
-			for i in range(len(frame)):	
-				depot_keys[i] = to_dense_depot[depot_vals[i]]
-			frame["depot_key"] = depot_keys
-		print "\ttrain..."; densify(train)
-		print "\tdev..."; densify(dev)
-		print "\ttest..."; densify(test)
+		for name in (
+			"depot",
+			"channel", 
+			"route"):
+			src = name + "_id"
+			dst = name + "_key"
+			print "converting %s to dense %s" % (src, dst)
+			train[dst], test[dst] = densify(train[src], test[src])
+			train = train.drop(src, 1)
+			test = test.drop(src, 1)
 
-		print "saving data pickles..."
+		for name, table in [
+			("product", products),
+			("client", clients)]:
+			src = name + "_id"
+			dst = name + "_key"
+			print "converting %s to dense %s in 2 passes to remove unseen" % (src, dst)
+			train[dst], test[dst], table[dst] = densify(train[src], test[src], table[src])
+			is_seen = np.zeros(np.max(table[dst].values) + 1, dtype = np.bool)
+			is_seen[train[dst].values] = True
+			is_seen[test[dst].values] = True
+			seen_keys = np.where(is_seen)[0]
+			print "\tseen %d/%d" % (len(seen_keys), len(table))
+			table_by_key = table.iloc[ table[dst].values ]
+			table = table_by_key.iloc[ seen_keys ].copy()
+			print "\tsecond pass"
+			train[dst], test[dst], table[dst] = densify(train[dst], test[dst], table[dst])
+			train = train.drop(src, 1)
+			test = test.drop(src, 1)
+			table = table.drop(src, 1)
+
+		print "train columns:"
+		print train.dtypes
+		print "test columns:"
+		print test.dtypes
+
+		print "saving pickles..."
 		train.to_pickle("pickle/train.pickle")
-		dev.to_pickle("pickle/dev.pickle")
 		test.to_pickle("pickle/test.pickle")
 		clients.to_pickle("pickle/clients.pickle")
 		products.to_pickle("pickle/products.pickle")
-
 	else:
 		print "loading data pickles..."
 		train = pd.read_pickle("pickle/train.pickle")
-		dev = pd.read_pickle("pickle/dev.pickle")
 		test = pd.read_pickle("pickle/test.pickle")
 		clients = pd.read_pickle("pickle/clients.pickle")
 		products = pd.read_pickle("pickle/products.pickle")
+
+	print "splitting train/dev..."
+	train, dev = train[train.week < 10], train[train.week >= 10]
 	
 	print "using %d train, %d dev, %d test lines, with %d clients, %d products" % (
 		len(train), len(dev), len(test), len(clients), len(products))
 	return train, dev, test, clients, products
 
-def load_no_name_clients():
-	lines = pd.read_csv("data/no_name_clients.csv", usecols = [0])
-	return set(lines["0"])
+# def load_no_name_clients():
+# 	lines = pd.read_csv("data/no_name_clients.csv", usecols = [0])
+# 	return set(lines["0"])
 
-def RMSLE(preds, actuals):
-	diffs = np.log(preds + 1) - np.log(actuals + 1)
-	return np.sqrt( np.average(diffs ** 2) )
+# def RMSLE(preds, actuals):
+# 	diffs = np.log(preds + 1) - np.log(actuals + 1)
+# 	return np.sqrt( np.average(diffs ** 2) )
 
 if __name__ == '__main__':
 	train, dev, test, clients, products = load_data()

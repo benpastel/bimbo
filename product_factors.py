@@ -5,19 +5,16 @@ import os, pickle
 from data import counts_and_avgs, densify
 
 def by_product_factor_vs_client(train, test):
-	print "by (avg multiplier for product) * (client avg)"
 	return by_avg_factor(train, test, 
 		lambda frame: frame.client_key.values,
 		lambda frame: frame.product_key.values)
 
 def by_client_factor_vs_product(train, test):
-	print "by (avg multiplier for client) * (product avg)"
 	return by_avg_factor(train, test, 
 		lambda frame: frame.product_key.values,
 		lambda frame: frame.client_key.values)
 
 def by_product_factor_vs_client_depot(train, test):
-	print "by (avg multiplier for product) * (client, depot avg)"
 	return by_avg_factor(train, test, 
 		lambda frame: frame.client_key.values.astype(np.int64) * 600 + frame.depot_key.values,
 		lambda frame: frame.product_key.values)
@@ -45,7 +42,7 @@ def avg_factor_features(train, test, baseline_key_fn, group_key_fn):
 	test_baselines = base_avgs[test_base_keys]
 
 	print "\tcomputing"
-	return group_factors[train_group_keys] * train_baselines, group_factors[test_group_keys] * test_baselines
+	return group_factors[test_group_keys] * test_baselines
 
 def by_avg_factor(train, test, baseline_key_fn, group_key_fn):
 	print "\tdense keys"
