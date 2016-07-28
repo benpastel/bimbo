@@ -1,3 +1,4 @@
+import pickle
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -5,8 +6,19 @@ from sklearn.linear_model import LinearRegression
 
 from data import counts_and_avgs, load_data, densify
 from product_factors import *
+from visualize import print_importances
 
 FIT_SAMPLES = 100 * 1000
+
+def feature_defs():
+	return (pair_key_features() + single_key_features() + [
+		("last_nonzero_logsale", last_nonzero_logsale),
+		("weeks_since_last_sale", weeks_since_last_sale),
+		("logsale_last_week", logsale_last_week),
+		("clientname_product avgs", lambda train, test: client_name_features(train, test, clients)),
+		("product factors vs client", lambda train, test: product_factor_vs_client_features(train, test)),
+		("client factors vs product", lambda train, test: client_factor_vs_product_features(train, test))
+	])
 
 def last_nonzero_logsale(train, test):
 	key_fn = product_client_hash
@@ -23,15 +35,15 @@ def last_nonzero_logsale(train, test):
 		by_key[k] = train.net_sales.values[ok]
 	return by_key[test_keys]
 
-# TODO: try treating different test data differently
+# TODO handle 10 / 11 test weeks differently
 def extract_week(test):
-	return test.week.values[0]
-	# if "week" in test.columns:
-	# 	out = test.week.values[0]
-	# else:
-	# 	out = 10
-	# print "(pretending all of test is week %d)" % out
-	# return out
+	# return test.week.values[0]
+	if "week" in test.columns and test.week.values[0] <= 10:
+		out = test.week.values[0]
+	else:
+		out = 10
+	print "\t(pretending all of test is week %d)" % out
+	return out
 
 def weeks_since_last_sale(train, test):
 	key_fn = product_client_hash
@@ -93,7 +105,7 @@ def pair_key_features():
 		return feature
 
 	for i in range(len(names)):
-		for j in range(i, len(names)):
+		for j in range(i+1, len(names)):
 			name1, name2 = names[i], names[j]
 			feature_name = "%s_%s_avg" % (name1, name2)
 			col1, col2 = name1 + "_key", name2 + "_key"
@@ -119,15 +131,8 @@ def logsale_last_week(train, test):
 
 def by_xgboost(train, test, clients):
 	print "training with XGBoost"
-
-	features = pair_key_features() + single_key_features() + [
-		("last_nonzero_logsale", last_nonzero_logsale),
-		("weeks_since_last_sale", weeks_since_last_sale),
-		("logsale_last_week", logsale_last_week),
-		("clientname_product avgs", lambda train, test: client_name_features(train, test, clients)),
-		("product factors", lambda train, test: product_factor_vs_client_features(train, test)),
-	]
 	print "\tsplitting train into pool & fit"
+	features = feature_defs()
 	pool = train[train.week < 8]
 	fit = train[train.week == 8]
 	fit = fit.sample(FIT_SAMPLES)
@@ -148,8 +153,13 @@ def by_xgboost(train, test, clients):
 	print "checking error on fit data"
 	fit_Y = model.predict(X)
 	rmse = np.sqrt( np.average( (Y - fit_Y)**2 ) )
-	print "error: %.4f" % rmse
+	print "fit error: %.4f" % rmse
 	del X, Y, fit_Y
+	print_importances(model)
+
+	print "saving to file"
+	with open("pickle/model.pickle", 'w') as f:
+		pickle.dump(model, f)
 
 	print "predicting"
 	test_feats = []
@@ -170,50 +180,51 @@ def product_client_depot_hash(frame):
 def product_depot_hash(frame):
 	return frame.product_key.values * 600 + frame.depot_key.values
 
-def by_linear_regression(train, test, clients):
-	print "training linear regression"
-	features = {
-		"product_client avgs": lambda train, test: avg_by_key(train, test, product_client_hash),
-		"clientname_product avgs": lambda train, test: client_name_features(train, test, clients),
-		"product factors": lambda train, test: product_factor_vs_client_features(train, test),
-	}
+# def by_linear_regression(train, test, clients):
+# 	print "training linear regression"
+# 	features = {
+# 		"product_client avgs": lambda train, test: avg_by_key(train, test, product_client_hash),
+# 		"clientname_product avgs": lambda train, test: client_name_features(train, test, clients),
+# 		"product factors": lambda train, test: product_factor_vs_client_features(train, test),
+# 		"client factors": lambda train, test: client_factor_vs_product_features(train, test)
+# 	}
 
-	print "\tsplitting train into pool & model"
-	pool = train[train.week < 8]
-	model = train[train.week == 8]
-	model = model.sample(1000 * 1000)
-	print "\t%d in pool, %d in model" % (len(pool), len(model))
+# 	print "\tsplitting train into pool & model"
+# 	pool = train[train.week < 8]
+# 	model = train[train.week == 8]
+# 	model = model.sample(1000 * 1000)
+# 	print "\t%d in pool, %d in model" % (len(pool), len(model))
 
-	print "prepare features"
-	model_feats = []
-	for name, fn in features.iteritems():
-		model_feats.append(fn(pool, model).reshape(-1, 1))
-	X = np.hstack(model_feats)
+# 	print "prepare features"
+# 	model_feats = []
+# 	for name, fn in features.iteritems():
+# 		model_feats.append(fn(pool, model).reshape(-1, 1))
+# 	X = np.hstack(model_feats)
 
-	nans = np.isnan(X)
-	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
-	X[nans] = np.log(4.0)
+# 	nans = np.isnan(X)
+# 	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
+# 	X[nans] = np.log(4.0)
 
-	Y = model.net_sales.values.reshape(-1, 1)
+# 	Y = model.net_sales.values.reshape(-1, 1)
 
-	print "\tfit"
-	print "\t\tshapes: %s X, %s Y" % (X.shape, Y.shape)
-	regression = LinearRegression().fit(X, Y)
-	theta = regression.coef_[0]
-	b = regression.intercept_
-	print "\tfound theta=%s, b=%.6f" % (theta, b)
+# 	print "\tfit"
+# 	print "\t\tshapes: %s X, %s Y" % (X.shape, Y.shape)
+# 	regression = LinearRegression().fit(X, Y)
+# 	theta = regression.coef_[0]
+# 	b = regression.intercept_
+# 	print "\tfound theta=%s, b=%.6f" % (theta, b)
 
-	print "regenerating features with full training set and predicting"
-	i = 0
-	preds = np.full(len(test), b, dtype=np.float32)
-	for name, fn in features.iteritems():
-		test_feat = fn(train, test)
-		nans = np.isnan(test_feat)
-		print "\t (%s: using median val for %d nans)" % (name, np.count_nonzero(nans))
-		test_feat[nans] = np.log(4.0)
-		preds += test_feat * theta[i]
-		i += 1
-	return preds
+# 	print "regenerating features with full training set and predicting"
+# 	i = 0
+# 	preds = np.full(len(test), b, dtype=np.float32)
+# 	for name, fn in features.iteritems():
+# 		test_feat = fn(train, test)
+# 		nans = np.isnan(test_feat)
+# 		print "\t (%s: using median val for %d nans)" % (name, np.count_nonzero(nans))
+# 		test_feat[nans] = np.log(4.0)
+# 		preds += test_feat * theta[i]
+# 		i += 1
+# 	return preds
 
 def avg_by_key(train, test, key_fn):
 	print "\tbuilding keys"
@@ -245,6 +256,11 @@ def product_factor_vs_client_features(train, test):
 	return avg_factor_features(train, test, 
 		lambda frame: frame.client_key.values,
 		lambda frame: frame.product_key.values)
+
+def client_factor_vs_product_features(train, test):
+	return avg_factor_features(train, test, 
+		lambda frame: frame.product_key.values,
+		lambda frame: frame.client_key.values)
 
 
 

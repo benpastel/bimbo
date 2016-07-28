@@ -71,6 +71,7 @@ def load_data():
 	}
 	test_cols = (
 		"id",
+		"week",
 		"depot_id",
 		"channel_id", 
 		"route_id",
@@ -79,6 +80,7 @@ def load_data():
 	)
 	test_dtypes = {
 		"id": np.int32,
+		"week": np.int8,
 		"depot_id": np.int32,
 		"channel_id": np.int32,
 		"route_id": np.int32,
