@@ -1,9 +1,8 @@
 import pickle, os
 import xgboost as xgb
-from ml import feature_defs
 from matplotlib import pyplot as plt
 
-def print_importances(model):
+def print_importances(model, features):
 	booster = model._Booster
 	booster.feature_names = [name for (name, fn) in features]
 	scores = list(booster.get_fscore().iteritems())
@@ -12,12 +11,13 @@ def print_importances(model):
 	for t in ranked: print "\t", t
 
 def visualize():
+	from ml import feature_defs
 	features = feature_defs()
 	print "loading model..."
 	with open("pickle/model.pickle", 'r') as f:
 		model = pickle.load(f)
 
-	print_importances(model)
+	print_importances(model, features)
 
 	# print "feature importances:"
 	# print booster.get_fscore()

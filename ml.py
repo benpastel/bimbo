@@ -155,7 +155,7 @@ def by_xgboost(train, test, clients):
 	rmse = np.sqrt( np.average( (Y - fit_Y)**2 ) )
 	print "fit error: %.4f" % rmse
 	del X, Y, fit_Y
-	print_importances(model)
+	print_importances(model, features)
 
 	print "saving to file"
 	with open("pickle/model.pickle", 'w') as f:
