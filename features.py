@@ -3,87 +3,168 @@ import pandas as pd
 
 from product_factors import *
 from data import counts_and_avgs, load_data, densify
-from ml import *
 
-GLOBAL_MEDIAN = 3.0
+def feature_defs(clients, products):
+	return (client_features(clients) + product_features(products) + pair_key_features() + single_key_features() + [
+		("last_nonzero_logsale", last_nonzero_logsale),
+		("weeks_since_last_sale", weeks_since_last_sale),
+		("logsale_last_week", logsale_last_week),
+		("clientname_product avgs", lambda train, test: client_name_features(train, test, clients)),
+		("product factors vs client", lambda train, test: product_factor_vs_client_features(train, test)),
+		("client factors vs product", lambda train, test: client_factor_vs_product_features(train, test))
+	])
 
-# def reference(train, test, clients, products, data_name):
-# 	return predict_reference(train, test, clients)
+def client_features(clients):
+	return []
 
-def current(train, test, clients, products, data_name):
-	return predict_current(train, test, clients)
+def product_features(products):
+	return []
 
-def predict_current(train, test, clients):
-	print "current predictions"
-	print "\t%d total:" % len(test)
-	preds = by_xgboost(train, test, clients)
-	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
-	return preds, None
+def last_nonzero_logsale(train, test):
+	key_fn = product_client_hash
+	train_keys, test_keys = densify(key_fn(train), key_fn(test))
+	max_key = max(np.max(train_keys), np.max(test_keys))
 
-# def predict_reference(train, test, clients):
-# 	print "reference predictions"
-# 	print "\t%d total:" % len(test)
-# 	preds, counts = by_client_product(train, test)
-# 	preds[np.isnan(preds)] = by_product_factor_vs_client(train, test[np.isnan(preds)])
-# 	preds[np.isnan(preds)] = by_clientname_product(train, test[np.isnan(preds)], clients)
-# 	preds[np.isnan(preds)] = by_median(test[np.isnan(preds)])
-# 	return preds, counts
+	by_key = np.zeros(max_key + 1, dtype = np.int32)
 
-def by_key(train, test, key_fn):
+	test_week = extract_week(test)
+	for week in range(3, test_week):
+		# overwrite values with the most recent week
+		ok = (train.week.values == week) & (train.net_sales.values > 0)
+		k = train_keys[ok]
+		by_key[k] = train.net_sales.values[ok]
+	return by_key[test_keys]
+
+# TODO handle 10 / 11 test weeks differently
+def extract_week(test):
+	# return test.week.values[0]
+	if "week" in test.columns and test.week.values[0] <= 10:
+		out = test.week.values[0]
+	else:
+		out = 10
+	print "\t(pretending all of test is week %d)" % out
+	return out
+
+def weeks_since_last_sale(train, test):
+	key_fn = product_client_hash
+	train_keys, test_keys = densify(key_fn(train), key_fn(test))
+	max_key = max(np.max(train_keys), np.max(test_keys))
+
+	# start all the keys at 10
+	since = np.zeros(max_key + 1, dtype = np.int32) + 10
+
+	test_week = extract_week(test)
+
+	for week in range(3, test_week):
+		ago = test_week - week
+		k = train_keys[train.week.values == week]
+		since[k] = ago
+	out = since[test_keys]
+	for ago in range(11):
+		print "\t\tweeks since last sale: %d: %d" % (ago, np.count_nonzero(out == ago))
+	return out
+
+def single_key_features():
+	names = [
+		"depot",
+		"channel", 
+		"route",
+		"client",
+		"product"]
+	def col_avg(col):
+		def feature(train, test):
+			max_key = max(train[col].max(), test[col].max())
+			print "\tmax key:", max_key
+			print "\tpooling log means"
+			_, means = counts_and_avgs(train[col], train.net_sales.values, max_group = max_key)
+			return means[test[col]]
+		return feature
+
+	builders = []
+	for name in names:
+		col = name + "_key"
+		feature_name = name + "_avg"
+		feature = col_avg(col)
+		builders.append((feature_name, feature))
+	return builders
+
+def pair_key_features():
+	names = [
+		"depot",
+		"channel", 
+		"route",
+		"client",
+		"product"]
+	builders = []
+	def pair_avg(col1, col2):
+		def feature(train, test):
+			col2_max = max(train[col2].max(), test[col2].max())
+			print "\tkey factor:", (col2_max + 1)
+			return avg_by_key(train, test, 
+				lambda frame: frame[col1].astype(np.int64) * (col2_max + 1) + frame[col2])
+		return feature
+
+	for i in range(len(names)):
+		for j in range(i+1, len(names)):
+			name1, name2 = names[i], names[j]
+			feature_name = "%s_%s_avg" % (name1, name2)
+			col1, col2 = name1 + "_key", name2 + "_key"
+			builders.append((feature_name, pair_avg(col1, col2)))
+	return builders
+
+def logsale_last_week(train, test):
+	key_fn = product_client_hash
+	week = extract_week(test) - 1
+	print "\tfinding trains in week %d" % week
+	last_train = train[train.week == week]
+	print "\t%d/%d trains are last week" % (len(last_train), len(train))
+	print "\tbuilding keys"
+	train_keys, test_keys = densify(key_fn(last_train), key_fn(test))
+	max_key = max(np.max(train_keys), np.max(test_keys))
+
+	print "\tlooking up vals"
+	vals = np.zeros(max_key + 1, dtype = np.int32)
+	vals[train_keys] = last_train.net_sales.values
+	out = vals[test_keys]
+	print "\t%d/%d nonzero vals" % (np.count_nonzero(out), len(test))
+	return out
+
+def avg_by_key(train, test, key_fn):
 	print "\tbuilding keys"
 	train_keys, test_keys = densify(key_fn(train), key_fn(test))
+	max_key = max(np.max(train_keys), np.max(test_keys))
+	print "\tmax key:", max_key
 
-	print "\tfinding log means"
-	counts, means = counts_and_avgs(train_keys, train.net_sales.values)
+	print "\tpooling log means"
+	_, means = counts_and_avgs(train_keys, train.net_sales.values, max_group = max_key)
 
-	print "\tpredicting"
-	preds = means[test_keys]
-	print "%d non-NaN" % np.count_nonzero(~np.isnan(preds))
-	return preds, counts[test_keys]
+	return means[test_keys]
 
-def by_client_product(train, test):
-	print "by (client, product)"
-	return by_key(train, test, lambda frame: 
-		frame.client_key.values.astype(np.int64) * 3000 
-		+ frame.product_key.values)
+def client_name_features(train, test, clients):	
+	print "\t\thashing client names"
+	client_hashes = np.zeros(np.max(clients.client_key) + 1, dtype=np.int64)
+	for r, name in enumerate(clients.client_name):
+		client_key = clients.client_key[r]
+		client_hashes[client_key] = hash(name)
 
-def by_client_depot_product(train, test):
-	print "by (client, depot, product)"
-	return by_key(train, test, lambda frame: 
-		frame.client_key.values * (3000 * 600)
+	def key(frame):
+		return (client_hashes[frame.client_key] * 3000
+			+ frame.product_key.values)
+	train_keys, test_keys = densify(key(train), key(test))
+
+	_, means = counts_and_avgs(train_keys, train.net_sales.values)
+	return means[test_keys]
+
+def product_client_hash(frame):
+	return frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values
+
+def product_client_depot_hash(frame):
+	return (frame.client_key.values * (3000 * 600)
 		+ frame.product_key.values * 600
 		+ frame.depot_key.values)
 
-def by_median(test):
-	print "by median: %d preds" % len(test)
-	return np.ones(len(test), dtype=np.float32) * GLOBAL_MEDIAN
-
-def by_clientname_product(train, test, clients):
-	print "predictions on (client_name, product)"
-	print "\tbuilding keys"
-	train_client_key, test_client_key, client_client_key = densify(train.client_id.values, test.client_id.values, clients.index.values)
-	
-	print "\thashing client names"
-	client_hashes = np.zeros(np.max(client_client_key) + 1, dtype=np.int64)
-	for r, name in enumerate(clients.client_name):
-		client_key = client_client_key[r]
-		client_hashes[client_key] = hash(name)
-
-	def key(frame, frame_client_keys):
-		return (
-			client_hashes[frame_client_keys] * 3000
-			+ frame.product_key.values)
-	train_keys, test_keys = densify(key(train, train_client_key), key(test, test_client_key))
-
-	print "\tfinding means in training"
-	counts, means = counts_and_avgs(train_keys, train.net_sales.values)
-
-	print "\tpredicting"
-	preds = means[test_keys]
-	print "\tmade %d non-nan predictions" % np.count_nonzero(~np.isnan(preds))
-	return preds, counts[test_keys]
-
-
+def product_depot_hash(frame):
+	return frame.product_key.values * 600 + frame.depot_key.values
 
 
 

@@ -4,8 +4,8 @@ import os
 import csv
 import sys
 
-from features import *
 from data import load_data, RMSE
+from model import predict
 
 def rmsle_breakdown_by_count(preds, actuals, counts):
 	for c in range(10):
@@ -20,25 +20,17 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 	print "count >= 10: %d points, %0.4f RMSLE" % (hits, rmsle)
 
 def predict_dev():
-	model_fns = [
-		# reference,
-		current
-	]
 	train, dev, test, clients, products = load_data()
 
-	for model_fn in model_fns:
-		print "making dev predictions with " + str(model_fn) + "..."
-		preds, counts = model_fn(train, dev, clients, products, "for_dev")
-		print "total RMSLE: %.4f" % RMSE(preds, dev.net_sales)
-		if counts:
-			rmsle_breakdown_by_count(preds, dev.net_sales, counts)
+	preds, counts = predict(train, dev, clients, products, is_dev=True)
+	print "total RMSLE: %.4f" % RMSE(preds, dev.net_sales)
+	if counts:
+		rmsle_breakdown_by_count(preds, dev.net_sales, counts)
 
 def predict_test():
-	model_fn = current
 	train, dev, test, clients, products = load_data()
 
-	print "making test predictions with " + str(model_fn) + "..."
-	preds, _ = model_fn(pd.concat([train, dev]), test, clients, products, "for_test")
+	preds, _ = predict(pd.concat([train, dev]), test, clients, products, is_dev=False)
 	if len(preds) != len(test): raise Exception("wrong prediction length")
 
 	print "writing predictions to file"
