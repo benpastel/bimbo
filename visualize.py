@@ -9,6 +9,7 @@ def print_importances(model, features):
 	ranked = sorted(scores, key=lambda (k,v): -v)
 	print "feature importances:"
 	for t in ranked: print "\t", t
+	booster.feature_names = None
 
 def visualize():
 	from ml import feature_defs

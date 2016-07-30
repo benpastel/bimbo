@@ -2,23 +2,39 @@ import numpy as np
 import pandas as pd
 
 from product_factors import *
-from data import counts_and_avgs, load_data, densify
+from data import *
 
 def feature_defs(clients, products):
-	return (client_features(clients) + product_features(products) + pair_key_features() + single_key_features() + [
+	return (
+		all_pairwise_factor_features(KEY_COLUMNS)
+		+ pair_key_features() 
+		+ single_key_features() + [
 		("last_nonzero_logsale", last_nonzero_logsale),
-		("weeks_since_last_sale", weeks_since_last_sale),
 		("logsale_last_week", logsale_last_week),
 		("clientname_product avgs", lambda train, test: client_name_features(train, test, clients)),
-		("product factors vs client", lambda train, test: product_factor_vs_client_features(train, test)),
-		("client factors vs product", lambda train, test: client_factor_vs_product_features(train, test))
 	])
 
 def client_features(clients):
-	return []
+	return [("client_includes_no_name", client_includes_no_name(clients))]
 
 def product_features(products):
 	return []
+
+# TODO: parse the client names as strings from the beginning
+def client_includes_no_name(clients):
+	def gen(train, test):
+		print "\tchecking which clients have 'SIN NOMBRE'"
+		find = np.core.defchararray.find
+		names = np.array(clients.client_name.values, dtype=np.str)
+		no_name = (-1 != find(names, 'SIN NOMBRE'))
+		print "\t%d/%d clients have 'SIN NOMBRE'" % (np.count_nonzero(no_name), len(no_name))
+		print "\tbroadcasting to test"
+		by_key = np.zeros(np.max(clients.client_key) + 1, dtype=np.bool)
+		by_key[clients.client_key.values] = no_name
+		test_no_name = by_key[test.client_key]
+		print "\t%d/%d test rows have 'SIN NOMBRE'" % (np.count_nonzero(test_no_name), len(test))
+		return test_no_name
+	return gen
 
 def last_nonzero_logsale(train, test):
 	key_fn = product_client_hash
@@ -67,10 +83,11 @@ def weeks_since_last_sale(train, test):
 def single_key_features():
 	names = [
 		"depot",
-		"channel", 
+		# "channel", 
 		"route",
-		"client",
-		"product"]
+		# "client",
+		"product"
+	]
 	def col_avg(col):
 		def feature(train, test):
 			max_key = max(train[col].max(), test[col].max())
@@ -94,7 +111,8 @@ def pair_key_features():
 		"channel", 
 		"route",
 		"client",
-		"product"]
+		"product"
+	]
 	builders = []
 	def pair_avg(col1, col2):
 		def feature(train, test):

@@ -11,3 +11,4 @@ fi
 echo "id,Demanda_uni_equil" > pred/header.txt
 sort -g -t, -k1 $1 > tmp/sorted_pred.csv
 cat pred/header.txt tmp/sorted_pred.csv > pred/submission.csv
+zip pred/submission.zip pred/submission.csv

@@ -1,7 +1,17 @@
 import numpy as np, pandas as pd
 import pickle, os
 
+KEY_COLUMNS = [
+	"depot",
+	"channel", 
+	"route",
+	"client",
+	"product"
+]
+
 def densify(*arrays):
+	for a in arrays:
+		if len(a) <= 0: raise ValueError("Empty array in " + str(arrays))
 	x = np.hstack(arrays)
 
 	print "\tdensifying %d values..." % len(x)

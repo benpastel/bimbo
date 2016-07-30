@@ -1,113 +1,108 @@
-import pickle
+import pickle, os
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.linear_model import LinearRegression
+from numpy.random import choice
 
-from data import counts_and_avgs, load_data, densify
+from data import *
 from visualize import print_importances
 from features import feature_defs
 
+DEV_FIT_PATH = "pickle/dev_fit_X"
+DEV_TEST_PATH = "pickle/dev_test_X"
+DEV_MODEL_PATH = "pickle/dev_model"
+
+TEST_FIT_PATH = "pickle/test_fit_X"
+TEST_TEST_PATH = "pickle/test_test_X"
+TEST_MODEL_PATH = "pickle/test_model"
+
 def predict(train, test, clients, products, is_dev):
-	features = feature_defs(clients, products)
+	defs = feature_defs(clients, products)
+	regen_features = True
+	regen_model = True
+	fit_samples = 1000 * 1000
 
-	if is_dev: 
-		fit_samples = 100 * 1000
-	else: 
-		fit_samples = 1000 * 1000
+	print "generating features"
+	fit_X, fit_Y, test_X, test_Y = generate_features(defs, train, test, regen_features, is_dev, fit_samples)
 
-	print "current predictions"
-	print "\t%d total:" % len(test)
-	preds = by_xgboost(train, test, features, fit_samples)
+	print "fitting with XGBoost"
+	preds, fit_rmse = by_xgboost(fit_X, fit_Y, test_X, test_Y)
 	if np.any(np.isnan(preds)):
 		print "WARNING: predict includes %d nans" % np.count_nonzero(np.isnan(preds))
+
+	print "\nSummary:"
+	print "xgboost with default params"
+	print "fit rmse: %d" % fit_rmse
+	print "fit samples: %d" % fit_samples
+	print "%d features:" % len(features)
+	print [name for (name, fn) in features]
 	return preds, None
 
-def by_xgboost(train, test, features, fit_samples):
-	print "training with XGBoost"
-	print "\tsplitting train into pool & fit"
-	pool = train[train.week < 8]
-	fit = train[train.week == 8]
-	fit = fit.sample(fit_samples)
-	print "\t%d in pool, %d in model" % (len(pool), len(fit))
+def by_xgboost(fit_X, fit_Y, test_X, test_Y, regen, is_dev):
+	path = (DEV_MODEL_PATH if is_dev else TEST_MODEL_PATH)
 
-	print "prepare features"
-	fit_feats = []
-	for name, fn in features:
-		print "feature:", name
-		fit_feats.append(fn(pool, fit).reshape(-1, 1))
-	X = np.hstack(fit_feats)
-	Y = fit.net_sales.values
+	if regen:
+		print "\tfit"
+		model = xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0)).fit(X, Y)
 
-	print "fit"
-	model = xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0)).fit(X, Y)
-	print "\tclassifier: %s" % model
+		print "\tsaving model to file"
+		with open(path, 'w') as f:
+			pickle.dump(model, f)
+	else:
+		print "loading", path
+		with open(path, 'r') as f:
+			model = pickle.load(f)
 
-	print "checking error on fit data"
-	fit_Y = model.predict(X)
-	rmse = np.sqrt( np.average( (Y - fit_Y)**2 ) )
-	print "fit error: %.4f" % rmse
-	del X, Y, fit_Y
+	print "\tchecking fit error"
+	rmse = RMSE(fit_Y, model.predict(X))
+	print "\tfit error: %.4f" % rmse
 	print_importances(model, features)
 
-	print "saving to file"
-	with open("pickle/model.pickle", 'w') as f:
-		pickle.dump(model, f)
+	return model.predict(test_X), rmse
 
-	print "predicting"
-	test_feats = []
-	for name, fn in features:
-		print "feature:", name
-		test_feats.append(fn(train, test).reshape(-1, 1))
-	test_X = np.hstack(test_feats)
-	return model.predict(test_X)
+def generate_features(feature_defs, train, test, regen, is_dev, fit_samples):
+	fit_path = (DEV_FIT_PATH if is_dev else TEST_FIT_PATH)
+	test_path = (DEV_TEST_PATH if is_dev else TEST_TEST_PATH)
 
-# def by_linear_regression(train, test, clients):
-# 	print "training linear regression"
-# 	features = {
-# 		"product_client avgs": lambda train, test: avg_by_key(train, test, product_client_hash),
-# 		"clientname_product avgs": lambda train, test: client_name_features(train, test, clients),
-# 		"product factors": lambda train, test: product_factor_vs_client_features(train, test),
-# 		"client factors": lambda train, test: client_factor_vs_product_features(train, test)
-# 	}
+	print "\tsplitting train into pool & fit"
+	in_fit = (train.week == 8)
+	pool, fit = train[~in_fit], train[in_fit]
+	print "\t%d in pool, %d in model" % (len(pool), len(fit))
 
-# 	print "\tsplitting train into pool & model"
-# 	pool = train[train.week < 8]
-# 	model = train[train.week == 8]
-# 	model = model.sample(1000 * 1000)
-# 	print "\t%d in pool, %d in model" % (len(pool), len(model))
+	if regen:
+		print "preparing pool/fit"
+		feats = []
+		for name, fn in feature_defs:
+			print "prepare feature:", name
+			feats.append(fn(pool, fit).reshape(-1, 1))
+		fit_X = np.hstack(feats)
+		fit_Y = fit.net_sales.values
 
-# 	print "prepare features"
-# 	model_feats = []
-# 	for name, fn in features.iteritems():
-# 		model_feats.append(fn(pool, model).reshape(-1, 1))
-# 	X = np.hstack(model_feats)
+		sample = choice(len(fit_X), fit_samples, replace = False)
+		fit_X, fit_Y = fit_X[sample], fit_Y[sample]
+		print "\tsaving fit features"
+		with open(fit_path, 'w') as f:
+			pickle.dump((fit_X, fit_Y), f)
 
-# 	nans = np.isnan(X)
-# 	print "\t (using median val for %d nan features)" % np.count_nonzero(nans)
-# 	X[nans] = np.log(4.0)
+	else:
+		print "loading fit", fit_path, test_path
+		with open(fit_path, 'r') as f:
+			fit_X, fit_Y = pickle.load(f)
 
-# 	Y = model.net_sales.values.reshape(-1, 1)
+	print "preparing train/test"
+	feats = []
+	for name, fn in feature_defs:
+		print "prepare feature:", name
+		feats.append(fn(train, test).reshape(-1, 1))
+	test_X = np.hstack(feats)
+	test_Y = test.net_sales.values
 
-# 	print "\tfit"
-# 	print "\t\tshapes: %s X, %s Y" % (X.shape, Y.shape)
-# 	regression = LinearRegression().fit(X, Y)
-# 	theta = regression.coef_[0]
-# 	b = regression.intercept_
-# 	print "\tfound theta=%s, b=%.6f" % (theta, b)
+	print "\tsaving test features"
+	with open(test_path, 'w') as f:
+		pickle.dump((test_X, test_Y), f)
 
-# 	print "regenerating features with full training set and predicting"
-# 	i = 0
-# 	preds = np.full(len(test), b, dtype=np.float32)
-# 	for name, fn in features.iteritems():
-# 		test_feat = fn(train, test)
-# 		nans = np.isnan(test_feat)
-# 		print "\t (%s: using median val for %d nans)" % (name, np.count_nonzero(nans))
-# 		test_feat[nans] = np.log(4.0)
-# 		preds += test_feat * theta[i]
-# 		i += 1
-# 	return preds
-
+	return fit_X, fit_Y, test_X, test_Y
 
 
 	

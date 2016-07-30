@@ -73,26 +73,6 @@ if [ ! -f data/slim_test.csv ]; then
 	cut -d, -f1 -f3 -f6 -f7 data/test.csv > data/slim_test.csv
 fi
 
-if [ ! -d split ]; then
-	echo "Preparing to split train by week"
-	mkdir split/
-	sort -g -t, -k1 data/slim_train.csv > split/all
-	for w in `seq 3 8`; do 
-		next=$((w + 1))
-		dst="split/train_$w.csv"
-
-		# find the first line with the next week
-		line=`cut -d, -f1 split/all | nl -w 10 | grep $next'$' | head -1 | cut -f1 | tr -d '[[:space:]]'`
-		count=$((line - 1))
-
-		echo "splitting first $count lines for week $w"
-		head -$count split/all > $dst
-		tail -n +$line split/all > split/tmp
-		mv split/tmp split/all
-	done
-	mv split/all split/train_9.csv
-fi
-
 if [ ! -f data/no_name_clients.csv ]; then
 	echo "finding clients containing 'SIN NOMBRE'..."
 	grep 'SIN NOMBRE' data/clients.csv > data/no_name_clients.csv
