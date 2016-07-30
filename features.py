@@ -5,14 +5,14 @@ from product_factors import *
 from data import *
 
 def feature_defs(clients, products):
-	return (
-		all_pairwise_factor_features(KEY_COLUMNS)
-		+ pair_key_features() 
-		+ single_key_features() + [
-		("last_nonzero_logsale", last_nonzero_logsale),
-		("logsale_last_week", logsale_last_week),
-		("clientname_product avgs", lambda train, test: client_name_features(train, test, clients)),
-	])
+	# return (
+	# 	all_pairwise_factor_features(KEY_COLUMNS)
+	# 	+ pair_key_features() 
+	# 	+ single_key_features() + [
+	# 	("last_nonzero_sale", last_nonzero_logsale),
+	# 	("sale_last_week", logsale_last_week),
+	# ])
+	return single_key_features(clients, products)
 
 def client_features(clients):
 	return [("client_includes_no_name", client_includes_no_name(clients))]
@@ -80,29 +80,30 @@ def weeks_since_last_sale(train, test):
 		print "\t\tweeks since last sale: %d: %d" % (ago, np.count_nonzero(out == ago))
 	return out
 
-def single_key_features():
-	names = [
-		"depot",
-		# "channel", 
-		"route",
-		# "client",
-		"product"
+def as_fn(col):
+	return lambda frame: frame[col]
+
+def single_key_features(clients, products):
+	keys = [
+		("clientname", clientname_hash_fn(clients)),
+		("depot", as_fn("depot_key")),
+		("channel", as_fn("channel_key")),
+		("route", as_fn("route_key")),
+		("client", as_fn("client_key")),
+		("product", as_fn("product_key"))
 	]
-	def col_avg(col):
-		def feature(train, test):
-			max_key = max(train[col].max(), test[col].max())
+	def feature(key_fn):
+		def f(train, test):
+			train_keys, test_keys = key_fn(train), key_fn(test)
+			max_key = max(np.max(train_keys), np.max(test_keys))
 			print "\tmax key:", max_key
 			print "\tpooling log means"
-			_, means = counts_and_avgs(train[col], train.net_sales.values, max_group = max_key)
-			return means[test[col]]
-		return feature
-
+			_, means = counts_and_avgs(train_keys, train.net_sales.values, max_group = max_key)
+			return means[test_keys]
+		return f
 	builders = []
-	for name in names:
-		col = name + "_key"
-		feature_name = name + "_avg"
-		feature = col_avg(col)
-		builders.append((feature_name, feature))
+	for (name, fn) in keys:
+		builders.append((name + "_avg", feature(fn)))
 	return builders
 
 def pair_key_features():
@@ -158,20 +159,21 @@ def avg_by_key(train, test, key_fn):
 
 	return means[test_keys]
 
-def client_name_features(train, test, clients):	
-	print "\t\thashing client names"
-	client_hashes = np.zeros(np.max(clients.client_key) + 1, dtype=np.int64)
-	for r, name in enumerate(clients.client_name):
-		client_key = clients.client_key[r]
-		client_hashes[client_key] = hash(name)
+# cache of all clientname hashes indexed by client_key
+CLIENTNAME_HASHES = None
+def clientname_hash_fn(clients):
+	global CLIENTNAME_HASHES
+	""" returns a function (frame => clientname_hashes) """
+	if not CLIENTNAME_HASHES:
+		print "\thashing client names"
+		hashes = densify(clients.client_name.values)
+		keys = clients.client_key.values
 
-	def key(frame):
-		return (client_hashes[frame.client_key] * 3000
-			+ frame.product_key.values)
-	train_keys, test_keys = densify(key(train), key(test))
-
-	_, means = counts_and_avgs(train_keys, train.net_sales.values)
-	return means[test_keys]
+		# index by client key
+		CLIENTNAME_HASHES = np.zeros(np.max(keys) + 1, dtype = np.int32)
+		for i in range(len(hashes)):
+			CLIENTNAME_HASHES[keys[i]] = hashes[i]
+	return lambda frame: CLIENTNAME_HASHES[frame.client_key]
 
 def product_client_hash(frame):
 	return frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values
