@@ -11,7 +11,7 @@ from features import feature_defs
 
 def predict(train, test, clients, products, is_dev):
 	defs = feature_defs(clients, products)
-	fit_samples = 10 * 1000
+	fit_samples = 1000 * 1000
 
 	print "generating fit features"
 	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples)
@@ -25,7 +25,6 @@ def predict(train, test, clients, products, is_dev):
 
 	print "generating test features"
 	test_X = generate_test_features(defs, train, test)
-
 
 	print "predicting"
 	preds = model.predict(test_X)

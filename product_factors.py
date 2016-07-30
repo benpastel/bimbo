@@ -4,23 +4,6 @@ import os, pickle
 
 from data import counts_and_avgs, densify
 
-def all_pairwise_factor_features(names):
-	names = list(names)
-	features = []
-	def feature(col1, col2):
-		return lambda train, test: avg_factor_features(train, test, 
-			lambda frame: frame[col1],
-			lambda frame: frame[col2])
-
-	for name1 in names:
-		for name2 in names:
-			if name1 == name2: continue
-			features.append((
-				"%s_vs_%s_factors" % (name1, name2), 
-				feature(name1 + "_key", name2 + "_key")))
-
-	return features
-
 def product_factor_vs_client_features(train, test):
 	return avg_factor_features(train, test, 
 		lambda frame: frame.client_key.values,
