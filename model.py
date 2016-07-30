@@ -13,60 +13,56 @@ def predict(train, test, clients, products, is_dev):
 	defs = feature_defs(clients, products)
 	fit_samples = 10 * 1000
 
-	print "generating features"
-	fit_X, fit_Y, test_X, test_Y = generate_features(defs, train, test, fit_samples)
+	print "generating fit features"
+	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples)
 
 	print "fitting with XGBoost"
-	preds, fit_rmse = by_xgboost(fit_X, fit_Y, test_X, test_Y, defs)
+	model = fit(fit_X, fit_Y)
+	print "\tchecking fit error"
+	rmse = RMSE(fit_Y, model.predict(fit_X))
+	print "\tfit error: %.4f" % rmse
+	print_importances(model, defs)
+
+	print "generating test features"
+	test_X = generate_test_features(defs, train, test)
+
+
+	print "predicting"
+	preds = model.predict(test_X)
+
 	if np.any(np.isnan(preds)):
 		print "WARNING: predict includes %d nans" % np.count_nonzero(np.isnan(preds))
 
 	print "\nSummary:"
 	print "xgboost with default params"
-	print "fit rmse: %d" % fit_rmse
+	print "fit rmse: %.4f" % rmse
 	print "fit samples: %d" % fit_samples
-	print "%d features:" % len(features)
-	print [name for (name, fn) in features]
+	print "%d features:" % len(defs)
+	print [name for (name, fn) in defs]
 	return preds, None
 
-# 
-def by_xgboost(fit_X, fit_Y, test_X, test_Y, feature_defs):
-	print "\tfit"
-	model = xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0)).fit(fit_X, fit_Y)
+def fit(X, Y):
+	return xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0)).fit(X, Y)
 
-	print "\tchecking fit error"
-	rmse = RMSE(fit_Y, model.predict(fit_X))
-	print "\tfit error: %.4f" % rmse
-	print_importances(model, feature_defs)
-
-	return model.predict(test_X), rmse
-
-def generate_features(feature_defs, train, test, fit_samples):
-	print "\tsplitting train into pool & fit"
-	in_fit = (train.week == 8)
-	pool, fit = train[~in_fit], train[in_fit]
-	print "\t%d in pool, %d in model" % (len(pool), len(fit))
-
-	print "preparing pool/fit"
-	feats = []
-	for name, fn in feature_defs:
-		print "prepare feature:", name
-		feats.append(fn(pool, fit).reshape(-1, 1))
-	fit_X = np.hstack(feats)
-	fit_Y = fit.net_sales.values
-
-	sample = choice(len(fit_X), fit_samples, replace = False)
-	fit_X, fit_Y = fit_X[sample], fit_Y[sample]
-
-	print "preparing train/test"
+def generate_test_features(feature_defs, train, test):
 	feats = []
 	for name, fn in feature_defs:
 		print "prepare feature:", name
 		feats.append(fn(train, test).reshape(-1, 1))
-	test_X = np.hstack(feats)
-	test_Y = test.net_sales.values
+	return np.hstack(feats)
 
-	return fit_X, fit_Y, test_X, test_Y
+def generate_fit_features(feature_defs, train, test, fit_samples):
+	print "\tsplitting train into pool & fit, sampling"
+	week8 = (train.week == 8)
+	pool, fit = train[~week8], train[week8]
+	fit = fit.sample(fit_samples)
+	print "\t%d in pool, %d in model" % (len(pool), len(fit))
+
+	feats = []
+	for name, fn in feature_defs:
+		print "prepare feature:", name
+		feats.append(fn(pool, fit).reshape(-1, 1))
+	return np.hstack(feats), fit.net_sales.values
 
 
 	
