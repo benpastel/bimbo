@@ -4,17 +4,23 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.linear_model import LinearRegression
 from numpy.random import choice
+import datetime
 
 from data import *
 from visualize import print_importances
 from features import feature_defs
 
 def predict(train, test, clients, products, is_dev):
+	tic = datetime.datetime.now()
+
 	defs = feature_defs(clients, products)
 	fit_samples = 1000 * 1000
 
 	print "generating fit features"
 	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples)
+
+	toc = datetime.datetime.now()
+	feature_time = toc - tic
 
 	print "fitting with XGBoost"
 	model = fit(fit_X, fit_Y)
@@ -23,14 +29,28 @@ def predict(train, test, clients, products, is_dev):
 	print "\tfit error: %.4f" % rmse
 	print_importances(model, defs)
 
+	tic = datetime.datetime.now()
+	fit_time = tic - toc
+
 	print "generating test features"
 	test_X = generate_test_features(defs, train, test)
+
+	toc = datetime.datetime.now()
+	feature_time += (toc - tic)
 
 	print "predicting"
 	preds = model.predict(test_X)
 
+	tic = datetime.datetime.now()
+	predict_time = tic - toc
+
 	if np.any(np.isnan(preds)):
 		print "WARNING: predict includes %d nans" % np.count_nonzero(np.isnan(preds))
+
+	print "elapsed:"
+	print "\t%s feature generation" % feature_time
+	print "\t%s model fitting" % fit_time
+	print "\t%s model predicting" % predict_time
 
 	print "\nSummary:"
 	print "xgboost with default params"
@@ -41,7 +61,7 @@ def predict(train, test, clients, products, is_dev):
 	return preds, None
 
 def fit(X, Y):
-	return xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0)).fit(X, Y)
+	return xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0), reg_lambda=2.0).fit(X, Y)
 
 def generate_test_features(feature_defs, train, test):
 	feats = []

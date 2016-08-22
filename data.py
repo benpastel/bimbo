@@ -46,12 +46,6 @@ def counts_and_avgs(groups, values, max_group=None):
 		return counts, out
 	return counts, avgs
 
-# def maxmax(*arrays):
-# 	best = np.max(arrays[0])
-# 	for i in range(1, len(arrays)):
-# 		best = max(best, arrays[i])
-# 	return best
-
 def load_data():
 	train_cols = (
 		"week",

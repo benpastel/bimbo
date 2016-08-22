@@ -27,31 +27,56 @@ def client_features(clients):
 
 	return [
 		("clientname_length", clientname_feature(clients, length)),
-		("clientname_the_count", clientname_feature(clients, the_count))]
+		# ("clientname_the_count", clientname_feature(clients, the_count))
+		]
 
 def product_features(products):
 	return []
 
-def pairwise_factor_features():
-	keys = [
-		("clientname", clientname_hash_fn(clients)),
-		("depot", as_fn("depot_key")),
-		("channel", as_fn("channel_key")),
-		("route", as_fn("route_key")),
-		("client", as_fn("client_key")),
-		("product", as_fn("product_key"))
+def pairwise_factor_features(clients, products):
+	keys = {
+		"clientname": clientname_hash_fn(clients),
+		"depot": as_fn("depot_key"),
+		"channel": as_fn("channel_key"),
+		"route": as_fn("route_key"),
+		"client": as_fn("client_key"),
+		"product": as_fn("product_key")
+	}
+
+	pairs = [
+		('product', 'client'),
+	    ('client', 'product'),
+	    ('product', 'channel'),
+	    ('product', 'depot'),
+	    ('channel', 'route'),
+	    ('route', 'product'),
+	    ('depot', 'route'),
+	    ('depot', 'product'),
+	    ('channel', 'product'),
+	    ('product', 'route'),
+	    ('route', 'channel'),
+	    ('depot', 'channel'),
+	    ('client', 'route'),
+	    ('route', 'depot'),
+	    ('depot', 'clientname'),
+	    ('clientname', 'route'),
+	    ('client', 'depot'),
+	    ('depot', 'client'),
+	    ('route', 'clientname'),
+	    ('clientname', 'client'),
+	    ('product', 'clientname'),
+	    ('clientname', 'depot'),
+	    ('channel', 'depot'),
+	    ('clientname', 'product'),
 	]
-	features = []
 	def feature(key1, key2):
 		return lambda train, test: avg_factor_features(train, test, key1, key2)
 
-	for (name1, key1) in names:
-		for (name2, key2) in names:
-			if name1 == name2: continue
-			features.append((
-				"%s_vs_%s_factors" % (name1, name2), 
-				feature(key1, key2)))
-
+	features = []
+	for (name1, name2) in pairs:
+		fn1 = keys[name1]
+		fn2 = keys[name2]
+		features.append(("%s_vs_%s_factors" % (name1, name2), feature(fn1, fn2)))
 	return features
 
 def last_nonzero_logsale(train, test):
@@ -105,9 +130,9 @@ def single_key_features(clients, products):
 	keys = [
 		("clientname", clientname_hash_fn(clients)),
 		("depot", as_fn("depot_key")),
-		("channel", as_fn("channel_key")),
+		# ("channel", as_fn("channel_key")),
 		("route", as_fn("route_key")),
-		("client", as_fn("client_key")),
+		# ("client", as_fn("client_key")),
 		("product", as_fn("product_key"))
 	]
 	def feature(key_fn):
@@ -125,14 +150,31 @@ def single_key_features(clients, products):
 	return builders
 
 def pair_key_features(clients, products):
-	keys = [
-		("clientname", clientname_hash_fn(clients)),
-		("depot", as_fn("depot_key")),
-		("channel", as_fn("channel_key")),
-		("route", as_fn("route_key")),
-		("client", as_fn("client_key")),
-		("product", as_fn("product_key"))
+	keys = {
+		"clientname": clientname_hash_fn(clients),
+		"depot": as_fn("depot_key"),
+		"channel": as_fn("channel_key"),
+		"route": as_fn("route_key"),
+		"client": as_fn("client_key"),
+		"product": as_fn("product_key")
+	}
+	pairs = []
+	# add product vs all others
+	for (name, fn) in keys.iteritems():
+		if name != "product": 
+			pairs.append(("product", name))
+	pairs += [
+		("route", "client"),
+		("depot", "route"),
+		("clientname", "route"),
+		("depot", "client"),
+		("depot", "channel"),
+		("channel", "route"),
+		("clientname", "depot"),
+		("channel", "client"),
+		("clientname", "channel")
 	]
+
 	builders = []
 	def feature(key1, key2):
 		def f(train, test):
@@ -144,11 +186,10 @@ def pair_key_features(clients, products):
 				lambda frame: key1(frame).astype(np.int64) * (key2_max + 1) + key2(frame))
 		return f
 
-	for i in range(len(keys)):
-		for j in range(i+1, len(keys)):
-			(name1, key1) = keys[i]
-			(name2, key2) = keys[j]
-			builders.append(("%s_%s_avg" % (name1, name2), feature(key1, key2)))
+	for name1, name2 in pairs:
+		fn1 = keys[name1]
+		fn2 = keys[name2]
+		builders.append(("%s_%s_avg" % (name1, name2), feature(fn1, fn2)))
 	return builders
 
 def logsale_last_week(train, test):
