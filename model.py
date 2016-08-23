@@ -1,4 +1,4 @@
-import pickle, os
+import pickle, os, sys
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -16,13 +16,11 @@ def predict(train, test, clients, products, is_dev):
 	defs = feature_defs(clients, products)
 	fit_samples = 1000 * 1000
 
-	print "generating fit features"
-	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples)
+	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples, is_dev)
 
 	toc = datetime.datetime.now()
 	feature_time = toc - tic
 
-	print "fitting with XGBoost"
 	model = fit(fit_X, fit_Y)
 	print "\tchecking fit error"
 	rmse = RMSE(fit_Y, model.predict(fit_X))
@@ -32,8 +30,7 @@ def predict(train, test, clients, products, is_dev):
 	tic = datetime.datetime.now()
 	fit_time = tic - toc
 
-	print "generating test features"
-	test_X = generate_test_features(defs, train, test)
+	test_X = generate_test_features(defs, train, test, is_dev)
 
 	toc = datetime.datetime.now()
 	feature_time += (toc - tic)
@@ -61,27 +58,37 @@ def predict(train, test, clients, products, is_dev):
 	return preds, None
 
 def fit(X, Y):
-	return xgb.XGBRegressor(nthread=3, subsample=0.1, base_score=np.log(4.0), reg_lambda=2.0).fit(X, Y)
+	print "fitting with XGBoost"
+	return xgb.XGBRegressor(subsample=0.1, base_score=np.log(4.0), reg_lambda=2.0).fit(X, Y)
 
-def generate_test_features(feature_defs, train, test):
-	feats = []
-	for name, fn in feature_defs:
-		print "prepare feature:", name
-		feats.append(fn(train, test).reshape(-1, 1))
-	return np.hstack(feats)
+def generate_test_features(feature_defs, train, test, is_dev):
+	print "generating test features"
+	return generate_features(feature_defs, train, test, is_dev, "pickle/dev_features/")
 
-def generate_fit_features(feature_defs, train, test, fit_samples):
-	print "\tsplitting train into pool & fit, sampling"
+def generate_fit_features(feature_defs, train, test, fit_samples, is_dev):
+	print "generating fit features"
+	print "\tsplitting train into pool & fit, sampling with fixed seed"
 	week8 = (train.week == 8)
 	pool, fit = train[~week8], train[week8]
-	fit = fit.sample(fit_samples)
+	fit = fit.sample(fit_samples, random_state = 1)
 	print "\t%d in pool, %d in model" % (len(pool), len(fit))
+	return generate_features(feature_defs, pool, fit, is_dev, "pickle/fit_features/")
 
+def generate_features(feature_defs, train, test, is_dev, save_dir):
+	if not os.path.isdir(save_dir):
+		os.makedirs(save_dir)
 	feats = []
 	for name, fn in feature_defs:
-		print "prepare feature:", name
-		feats.append(fn(pool, fit).reshape(-1, 1))
-	return np.hstack(feats), fit.net_sales.values
-
-
+		path = save_dir + name
+		if is_dev and os.path.isfile(path):
+			print "loading feature:", name
+			feat = pickle.load(open(path, 'rb'))
+		else: 
+			print "computing feature:", name
+			feat = fn(train, test).reshape(-1, 1)
+			if is_dev:
+				print "\tsaving (%d bytes)" % sys.getsizeof(feat)
+				pickle.dump(feat, open(path, 'wb'))
+		feats.append(feat)
+	return np.hstack(feats)
 	
