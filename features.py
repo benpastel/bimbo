@@ -5,6 +5,7 @@ from product_factors import *
 from data import *
 
 def feature_defs(clients, products):
+	print "preparing feature definitions"
 	return (
 		client_features(clients)
 		+ pairwise_factor_features(clients, products)

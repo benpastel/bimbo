@@ -10,13 +10,16 @@ from data import *
 from visualize import print_importances
 from features import feature_defs
 
+# changing these invalidates the cache
+FIT_SAMPLES = 300 * 1000
+DEV_SAMPLES = 1000 * 1000
+
 def predict(train, test, clients, products, is_dev):
 	tic = datetime.datetime.now()
 
 	defs = feature_defs(clients, products)
-	fit_samples = 1000 * 1000
 
-	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples, is_dev)
+	fit_X, fit_Y = generate_fit_features(defs, train, test, FIT_SAMPLES, is_dev)
 
 	toc = datetime.datetime.now()
 	feature_time = toc - tic
@@ -30,7 +33,7 @@ def predict(train, test, clients, products, is_dev):
 	tic = datetime.datetime.now()
 	fit_time = tic - toc
 
-	test_X = generate_test_features(defs, train, test, is_dev)
+	test_X = generate_test_features(defs, train, test, DEV_SAMPLES, is_dev)
 
 	toc = datetime.datetime.now()
 	feature_time += (toc - tic)
@@ -61,8 +64,11 @@ def fit(X, Y):
 	print "fitting with XGBoost"
 	return xgb.XGBRegressor(subsample=0.1, base_score=np.log(4.0), reg_lambda=2.0).fit(X, Y)
 
-def generate_test_features(feature_defs, train, test, is_dev):
+def generate_test_features(feature_defs, train, test, test_samples, is_dev):
 	print "generating test features"
+	if is_dev:
+		print "\tsampling down to %d test samples" % test_samples
+		test = test.sample(test_samples, random_state = 1)
 	return generate_features(feature_defs, train, test, is_dev, "pickle/dev_features/")
 
 def generate_fit_features(feature_defs, train, test, fit_samples, is_dev):
@@ -72,7 +78,7 @@ def generate_fit_features(feature_defs, train, test, fit_samples, is_dev):
 	pool, fit = train[~week8], train[week8]
 	fit = fit.sample(fit_samples, random_state = 1)
 	print "\t%d in pool, %d in model" % (len(pool), len(fit))
-	return generate_features(feature_defs, pool, fit, is_dev, "pickle/fit_features/")
+	return generate_features(feature_defs, pool, fit, is_dev, "pickle/fit_features/"), fit.net_sales.values
 
 def generate_features(feature_defs, train, test, is_dev, save_dir):
 	if not os.path.isdir(save_dir):
@@ -83,11 +89,11 @@ def generate_features(feature_defs, train, test, is_dev, save_dir):
 		if is_dev and os.path.isfile(path):
 			print "loading feature:", name
 			feat = pickle.load(open(path, 'rb'))
-		else: 
+		else:
 			print "computing feature:", name
 			feat = fn(train, test).reshape(-1, 1)
 			if is_dev:
-				print "\tsaving (%d bytes)" % sys.getsizeof(feat)
+				print "\tsaving (%d bytes)" % feat.nbytes
 				pickle.dump(feat, open(path, 'wb'))
 		feats.append(feat)
 	return np.hstack(feats)
