@@ -22,10 +22,8 @@ def rmsle_breakdown_by_count(preds, actuals, counts):
 def predict_dev():
 	train, dev, test, clients, products = load_data()
 
-	preds, counts = predict(train, dev, clients, products, is_dev=True)
-	print "total RMSLE: %.4f" % RMSE(preds, dev.net_sales)
-	if counts:
-		rmsle_breakdown_by_count(preds, dev.net_sales, counts)
+	preds, Y = predict(train, dev, clients, products, is_dev=True)
+	print "total RMSLE: %.4f" % RMSE(preds, Y)
 
 def predict_test():
 	train, dev, test, clients, products = load_data()

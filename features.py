@@ -131,23 +131,29 @@ def single_key_features(clients, products):
 	keys = [
 		("clientname", clientname_hash_fn(clients)),
 		("depot", as_fn("depot_key")),
-		# ("channel", as_fn("channel_key")),
+		#("channel", as_fn("channel_key")),
 		("route", as_fn("route_key")),
 		# ("client", as_fn("client_key")),
 		("product", as_fn("product_key"))
 	]
-	def feature(key_fn):
+	def avg_feature(key_fn):
 		def f(train, test):
 			train_keys, test_keys = key_fn(train), key_fn(test)
 			max_key = max(np.max(train_keys), np.max(test_keys))
-			print "\tmax key:", max_key
-			print "\tpooling log means"
 			_, means = counts_and_avgs(train_keys, train.net_sales.values, max_group = max_key)
 			return means[test_keys]
 		return f
+	def count_feature(key_fn):
+		def f(train, test):
+			train_keys, test_keys = key_fn(train), key_fn(test)
+			max_key = max(np.max(train_keys), np.max(test_keys))
+			counts, _ = counts_and_avgs(train_keys, train.net_sales.values, max_group = max_key)
+			return counts[test_keys]
+		return f
 	builders = []
 	for (name, fn) in keys:
-		builders.append((name + "_avg", feature(fn)))
+		builders.append((name + "_avg", avg_feature(fn)))
+		builders.append((name + "_count", count_feature(fn)))
 	return builders
 
 def pair_key_features(clients, products):
@@ -177,7 +183,7 @@ def pair_key_features(clients, products):
 	]
 
 	builders = []
-	def feature(key1, key2):
+	def avg_feature(key1, key2):
 		def f(train, test):
 			train_key1s, test_key1s = key1(train), key1(test)
 			train_key2s, test_key2s = key2(train), key2(test)
@@ -187,10 +193,24 @@ def pair_key_features(clients, products):
 				lambda frame: key1(frame).astype(np.int64) * (key2_max + 1) + key2(frame))
 		return f
 
+	def count_feature(key1, key2):
+		def f(train, test):
+			train_key1s, test_key1s = key1(train), key1(test)
+			train_key2s, test_key2s = key2(train), key2(test)
+			key2_max = max(np.max(train_key2s), np.max(test_key2s))
+			combined_key = lambda frame: key1(frame).astype(np.int64) * (key2_max + 1) + key2(frame)
+
+			train_keys, test_keys = densify(combined_key(train), combined_key(test))
+			counts = np.bincount(train_keys)
+			return counts[test_keys]
+		return f
+
 	for name1, name2 in pairs:
 		fn1 = keys[name1]
 		fn2 = keys[name2]
-		builders.append(("%s_%s_avg" % (name1, name2), feature(fn1, fn2)))
+		builders.append(("%s_%s_avg" % (name1, name2), avg_feature(fn1, fn2)))
+		builders.append(("%s_%s_count" % (name1, name2), count_feature(fn1, fn2)))
+
 	return builders
 
 def logsale_last_week(train, test):
