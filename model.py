@@ -12,16 +12,21 @@ from data import *
 from visualize import print_importances
 from features import feature_defs
 
-# TODO: actually keep the subsample in? did worse on full set
+IMPUTE_VALUE = 0
+MAX_DEV_SAMPLES_PER_MODEL = 100 * 1000
+
+# kicking up the n_estimator seems to be helpful, but slows things down a lot
 L1_MODELS = [
-	("xgb short wide", XGBRegressor(base_score=np.log(4.0), reg_lambda=2.0, min_child_weight=10, 
-		max_depth=2, n_estimators=200)), 
-	("xgb tall skinny", XGBRegressor(base_score=np.log(4.0), reg_lambda=2.0, min_child_weight=10, 
-		max_depth=5, n_estimators=30)),
-	("xgb no subsample", XGBRegressor(base_score=np.log(4.0), reg_alpha=2.0)),
-	("xgb subsample", XGBRegressor(subsample=0.5, base_score=np.log(4.0), reg_alpha=2.0)),
+	("xgb shallow fat", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
+		max_depth=2, n_estimators=500)),
+	("xgb deep skinny", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=40.0, min_child_weight=100, 
+		max_depth=10, n_estimators=50)),
+	("Ridge", Ridge()),
+	("SVR", SVR()),
+	("SGDRegressor", SGDRegressor()),
 ]
 L2_MODEL = LassoCV(positive=True)
+# L2_MODEL = LinearRegression()
 
 def predict(train, test, clients, products, is_dev):
 	tic = datetime.datetime.now()
@@ -33,18 +38,19 @@ def predict(train, test, clients, products, is_dev):
 	defs = feature_defs(clients, products)
 
 	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples, is_dev)
+	if is_dev:
+		# number of L1 models might have dropped since we cached features
+		# make sure we don't go too slow
+		max_n = MAX_DEV_SAMPLES_PER_MODEL * (len(L1_MODELS) + 1)
+		fit_X = fit_X[0:max_n,:]
+		fit_Y = fit_Y[0:max_n]
 
 	toc = datetime.datetime.now()
 	feature_time = toc - tic
 
-	L1s, L2 = fit(fit_X, fit_Y)
+	L1s, L2, rmse = fit(fit_X, fit_Y)
 	tic = datetime.datetime.now()
 	fit_time = tic - toc
-
-	print "\tchecking fit error"
-	rmse = RMSE(fit_Y, model_predict(fit_X, L1s, L2))
-	print "\tfit error: %.4f" % rmse
-	describe(L1s, L2)
 
 	test_X, test_Y = generate_test_features(defs, train, test, dev_samples, is_dev)
 
@@ -88,27 +94,38 @@ def fit(X, Y):
 	Xs = split(model_count, X)
 	Ys = split(model_count, Y)
 	L1s = []
+	outs = []
 
 	for i, (name, model) in enumerate(L1_MODELS):
 		X = Xs[i]
 		Y = Ys[i]
 		print "L1: fitting %d points with %s" % (len(X), name)
-		L1s.append(model.fit(X, Y))
+		fitted = model.fit(X, Y)
+		L1s.append(fitted)
+		print "\tpredict"
 
-	print "L2: fitting %d points with %s" 
+		fit_out = fitted.predict(X)
+		print "\tRMSE: %.3f fit" % RMSE(Y, fit_out)
+
+		lastX_out = fitted.predict(Xs[-1])
+		print "\tRMSE: %.3f holdout in same week" % RMSE(Ys[-1], lastX_out)
+		outs.append(lastX_out.reshape(-1, 1))
+
 	X = Xs[-1]
 	Y = Ys[-1]
-	outs = []
-	for i, L1 in enumerate(L1s):
-		out = L1.predict(X).reshape(-1, 1)
-		print "\t%s output: max %.1f, min %.1f, avg %.1f" % (L1_MODELS[i][0], np.max(out), np.min(out), np.average(out))
-		if np.any(np.isnan(out)): raise ValueError("L1 model output a nan")
-		if np.any(np.isinf(out)): raise ValueError("L1 model output an inf")
-		outs.append(out)
+	print "L2: fitting %d points with %s" % (len(X), L2_MODEL)
 	inter = np.hstack(outs)
 	L2 = L2_MODEL.fit(inter, Y)
+	fit_out = L2.predict(inter)
+	rmse = RMSE(Y, fit_out)
+	print "\tRMSE: %.3f fit" % rmse
+	
+	print "L2 coefficients:"
+	for i, (name, _) in enumerate(L1_MODELS):
+		print "\t%s: %.4f" % (name, L2.coef_[i])
+	print "b:", L2.intercept_
 
-	return L1s, L2
+	return L1s, L2, rmse
 
 def generate_test_features(feature_defs, train, test, test_samples, is_dev):
 	print "generating test features"
@@ -156,21 +173,14 @@ def generate_features(feature_defs, train, test, is_dev, save_dir):
 		feats.append(feat)
 	X = np.hstack(feats)
 	nans = np.isnan(X)
-	print "\t replacing %d NaNs with 0" % np.count_nonzero(nans)
-	X[nans] = 0
+	print "\t replacing %d NaNs with %d" % (np.count_nonzero(nans), IMPUTE_VALUE)
+	X[nans] = IMPUTE_VALUE
 	return X
 
-def describe(L1s, L2):
-	print "L2 coefficients:"
-	for i, (name, _) in enumerate(L1_MODELS):
-		print "\t%s: %.4f" % (name, L2.coef_[i])
-
-	print "b:", L2.intercept_
-
 def split(ways, M):
+	c = M.shape[0] / ways
 	slices = []
 	start = 0
-	c = len(M) / ways
 	for i in range(ways):
 		slices.append(M[start:start+c])
 		start += c
