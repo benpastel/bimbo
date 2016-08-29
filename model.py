@@ -7,26 +7,39 @@ import datetime
 from xgboost import XGBRegressor
 from sklearn.svm import SVR
 from sklearn.linear_model import LinearRegression, Ridge, BayesianRidge, SGDRegressor, LassoCV
+from sklearn import preprocessing
+
+import tensorflow as tf
 
 from data import *
 from visualize import print_importances
 from features import feature_defs
 
-IMPUTE_VALUE = 0
+IMPUTE_VALUE = -1
 MAX_DEV_SAMPLES_PER_MODEL = 100 * 1000
+
+class NN:
+	def __init__(self):
+		self.net = tf.contrib.learn.DNNRegressor(hidden_units=[20, 5], dropout=0.1)
+
+	def fit(self, X, Y):
+		self.net = self.net.fit(X, Y, steps=1000)
+		return self
+
+	def predict(self, X):
+		return self.net.predict(X, batch_size=100)
 
 # kicking up the n_estimator seems to be helpful, but slows things down a lot
 L1_MODELS = [
+	("Neural Net", NN()),
 	("xgb shallow fat", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
-		max_depth=2, n_estimators=500)),
+		max_depth=3, n_estimators=500)),
 	("xgb deep skinny", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=40.0, min_child_weight=100, 
-		max_depth=10, n_estimators=50)),
-	("Ridge", Ridge()),
-	("SVR", SVR()),
-	("SGDRegressor", SGDRegressor()),
+		max_depth=12, n_estimators=50)),
+	("xgb middle", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
+		max_depth=5, n_estimators=200)),
 ]
-L2_MODEL = LassoCV(positive=True)
-# L2_MODEL = LinearRegression()
+L2_MODEL = LassoCV()
 
 def predict(train, test, clients, products, is_dev):
 	tic = datetime.datetime.now()
@@ -175,6 +188,8 @@ def generate_features(feature_defs, train, test, is_dev, save_dir):
 	nans = np.isnan(X)
 	print "\t replacing %d NaNs with %d" % (np.count_nonzero(nans), IMPUTE_VALUE)
 	X[nans] = IMPUTE_VALUE
+	print "\tscaling..."
+	X = preprocessing.MinMaxScaler().fit_transform(X)
 	return X
 
 def split(ways, M):

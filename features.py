@@ -19,16 +19,9 @@ def feature_defs(clients, products):
 def client_features(clients):
 	def length(names): 
 		return np.char.count(names, '') - 1
-	
-	def the_count(names):
-		counts = np.zeros(len(names), dtype=np.int32)
-		for token in ['EL ', 'LOS ', 'LA ', 'LAS ', 'LO ']:
-			counts += np.char.count(names, token)
-		return counts
 
 	return [
 		("clientname_length", clientname_feature(clients, length)),
-		# ("clientname_the_count", clientname_feature(clients, the_count))
 		]
 
 def product_features(products):
@@ -44,40 +37,43 @@ def pairwise_factor_features(clients, products):
 		"product": as_fn("product_key")
 	}
 
-	pairs = [
-		('product', 'client'),
-	    ('client', 'product'),
-	    ('product', 'channel'),
-	    ('product', 'depot'),
-	    ('channel', 'route'),
-	    ('route', 'product'),
-	    ('depot', 'route'),
-	    ('depot', 'product'),
-	    ('channel', 'product'),
-	    ('product', 'route'),
-	    ('route', 'channel'),
-	    ('depot', 'channel'),
-	    ('client', 'route'),
-	    ('route', 'depot'),
-	    ('depot', 'clientname'),
-	    ('clientname', 'route'),
-	    ('client', 'depot'),
-	    ('depot', 'client'),
-	    ('route', 'clientname'),
-	    ('clientname', 'client'),
-	    ('product', 'clientname'),
-	    ('clientname', 'depot'),
-	    ('channel', 'depot'),
-	    ('clientname', 'product'),
-	]
+	# pairs = [
+	# 	('product', 'client'),
+	#     ('client', 'product'),
+	#     ('product', 'channel'),
+	#     ('product', 'depot'),
+	#     ('channel', 'route'),
+	#     ('route', 'product'),
+	#     ('depot', 'route'),
+	#     ('depot', 'product'),
+	#     ('channel', 'product'),
+	#     ('product', 'route'),
+	#     ('route', 'channel'),
+	#     ('depot', 'channel'),
+	#     ('client', 'route'),
+	#     ('route', 'depot'),
+	#     ('depot', 'clientname'),
+	#     ('clientname', 'route'),
+	#     ('client', 'depot'),
+	#     ('depot', 'client'),
+	#     ('route', 'clientname'),
+	#     ('clientname', 'client'),
+	#     ('product', 'clientname'),
+	#     ('clientname', 'depot'),
+	#     ('channel', 'depot'),
+	#     ('clientname', 'product'),
+	# ]
 	def feature(key1, key2):
 		return lambda train, test: avg_factor_features(train, test, key1, key2)
 
 	features = []
-	for (name1, name2) in pairs:
-		fn1 = keys[name1]
-		fn2 = keys[name2]
-		features.append(("%s_vs_%s_factors" % (name1, name2), feature(fn1, fn2)))
+	for i in range(len(keys)):
+		for j in range(i+1, len(keys)):
+			name1 = keys.keys()[i]
+			name2 = keys.keys()[j]
+			fn1 = keys[name1]
+			fn2 = keys[name2]
+			features.append(("%s_vs_%s_factors" % (name1, name2), feature(fn1, fn2)))
 	return features
 
 def last_nonzero_logsale(train, test):
@@ -131,9 +127,9 @@ def single_key_features(clients, products):
 	keys = [
 		("clientname", clientname_hash_fn(clients)),
 		("depot", as_fn("depot_key")),
-		#("channel", as_fn("channel_key")),
+		("channel", as_fn("channel_key")), # might be useless
 		("route", as_fn("route_key")),
-		# ("client", as_fn("client_key")),
+		("client", as_fn("client_key")), # might be useless
 		("product", as_fn("product_key"))
 	]
 	def avg_feature(key_fn):
@@ -165,24 +161,23 @@ def pair_key_features(clients, products):
 		"client": as_fn("client_key"),
 		"product": as_fn("product_key")
 	}
-	pairs = []
-	# add product vs all others
-	for (name, fn) in keys.iteritems():
-		if name != "product": 
-			pairs.append(("product", name))
-	pairs += [
-		("route", "client"),
-		("depot", "route"),
-		("clientname", "route"),
-		("depot", "client"),
-		("depot", "channel"),
-		("channel", "route"),
-		("clientname", "depot"),
-		("channel", "client"),
-		("clientname", "channel")
-	]
+	# pairs = []
+	# # add product vs all others
+	# for (name, fn) in keys.iteritems():
+	# 	if name != "product": 
+	# 		pairs.append(("product", name))
+	# pairs += [
+	# 	("route", "client"),
+	# 	("depot", "route"),
+	# 	("clientname", "route"),
+	# 	("depot", "client"),
+	# 	("depot", "channel"),
+	# 	("channel", "route"),
+	# 	("clientname", "depot"),
+	# 	("channel", "client"),
+	# 	("clientname", "channel")
+	# ]
 
-	builders = []
 	def avg_feature(key1, key2):
 		def f(train, test):
 			train_key1s, test_key1s = key1(train), key1(test)
@@ -205,11 +200,15 @@ def pair_key_features(clients, products):
 			return counts[test_keys]
 		return f
 
-	for name1, name2 in pairs:
-		fn1 = keys[name1]
-		fn2 = keys[name2]
-		builders.append(("%s_%s_avg" % (name1, name2), avg_feature(fn1, fn2)))
-		builders.append(("%s_%s_count" % (name1, name2), count_feature(fn1, fn2)))
+	builders = []
+	for i in range(len(keys)):
+		for j in range(i+1, len(keys)):
+			name1 = keys.keys()[i]
+			name2 = keys.keys()[j]
+			fn1 = keys[name1]
+			fn2 = keys[name2]
+			builders.append(("%s_%s_avg" % (name1, name2), avg_feature(fn1, fn2)))
+			builders.append(("%s_%s_count" % (name1, name2), count_feature(fn1, fn2)))
 
 	return builders
 
