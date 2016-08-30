@@ -4,6 +4,8 @@ import pandas as pd
 from product_factors import *
 from data import *
 
+from partitioning import partition_feature_defs, as_fn, clientname_hash_fn
+
 def feature_defs(clients, products):
 	print "preparing feature definitions"
 	return (
@@ -14,7 +16,9 @@ def feature_defs(clients, products):
 		+ [
 			("last_nonzero_sale", last_nonzero_logsale),
 			("sale_last_week", logsale_last_week)
-		])
+		]
+		+ partition_feature_defs(clients, products)
+		)
 
 def client_features(clients):
 	def length(names): 
@@ -119,9 +123,6 @@ def weeks_since_last_sale(train, test):
 	for ago in range(11):
 		print "\t\tweeks since last sale: %d: %d" % (ago, np.count_nonzero(out == ago))
 	return out
-
-def as_fn(col):
-	return lambda frame: frame[col]
 
 def single_key_features(clients, products):
 	keys = [
@@ -249,28 +250,6 @@ def clientname_feature(clients, clientname_fn):
 		vals_by_key[keys[i]] = vals[i]
 
 	return lambda train, test: vals_by_key[test.client_key]
-
-# cache of all clientname hashes indexed by client_key
-CLIENTNAME_HASHES = None
-def clientname_hash_fn(clients):
-	global CLIENTNAME_HASHES
-	""" returns a function (frame => clientname_hashes) """
-	if CLIENTNAME_HASHES is None:
-		print "\tpreprocess client names"
-		names = np.array(clients.client_name.values, dtype = np.str)
-		for token in ['EL ', 'LA ', 'LAS ', 'DE ', 'LOS ']:
-			names = np.char.replace(names, token, '')
-		names = np.char.strip(names)
-
-		print "\thashing client names"
-		hashes = densify(names)
-		keys = clients.client_key.values
-
-		# index by client key
-		CLIENTNAME_HASHES = np.zeros(np.max(keys) + 1, dtype = np.int32)
-		for i in range(len(hashes)):
-			CLIENTNAME_HASHES[keys[i]] = hashes[i]
-	return lambda frame: CLIENTNAME_HASHES[frame.client_key]
 
 def product_client_hash(frame):
 	return frame.client_key.values.astype(np.int64) * 3000 + frame.product_key.values

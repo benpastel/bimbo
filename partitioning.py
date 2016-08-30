@@ -4,8 +4,30 @@ import random
 
 from data import *
 
-# TODO: this will be circular dependency
-from features import as_fn, clientname_hash_fn
+def as_fn(col):
+	return lambda frame: frame[col]
+
+# cache of all clientname hashes indexed by client_key
+CLIENTNAME_HASHES = None
+def clientname_hash_fn(clients):
+	global CLIENTNAME_HASHES
+	""" returns a function (frame => clientname_hashes) """
+	if CLIENTNAME_HASHES is None:
+		print "\tpreprocess client names"
+		names = np.array(clients.client_name.values, dtype = np.str)
+		for token in ['EL ', 'LA ', 'LAS ', 'DE ', 'LOS ']:
+			names = np.char.replace(names, token, '')
+		names = np.char.strip(names)
+
+		print "\thashing client names"
+		hashes = densify(names)
+		keys = clients.client_key.values
+
+		# index by client key
+		CLIENTNAME_HASHES = np.zeros(np.max(keys) + 1, dtype = np.int32)
+		for i in range(len(hashes)):
+			CLIENTNAME_HASHES[keys[i]] = hashes[i]
+	return lambda frame: CLIENTNAME_HASHES[frame.client_key.values]
 
 def partition_feature_defs(clients, products):
 	all_key_fns = {
@@ -20,18 +42,18 @@ def partition_feature_defs(clients, products):
 	feats = []
 	random.seed(1)
 	possible_levels = all_key_fns.keys()
-	for trial in range(33):
-		random.shuffle(possible_levels)
-		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 1))
 
-	for trial in range(33):
-		random.shuffle(possible_levels)
-		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 10))
-
-	for trial in range(33):
+	for trial in range(10):
 		random.shuffle(possible_levels)
 		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 100))
 
+	for trial in range(10):
+		random.shuffle(possible_levels)
+		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 300))
+
+	for trial in range(10):
+		random.shuffle(possible_levels)
+		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 1000))
 	return feats
 
 def make_partition_feature(level_order, all_key_fns, max_group_size):
@@ -41,6 +63,9 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 		is_train_finished = np.zeros((len(train), ), dtype=np.bool)
 		is_test_finished = np.zeros((len(test), ), dtype=np.bool)
 		final_avgs = np.zeros((len(test), ), dtype=np.float32)
+
+		train_keys = np.zeros((len(train), ), dtype=np.int64)
+		test_keys = np.zeros((len(test), ), dtype=np.int64)
 
 		level_count = 0
 		levels = []
@@ -54,27 +79,32 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 
 			print "\tpartioning on", level
 
-			# re-densify all previous keys on the unfinished data.
 			unfinished_train = train[~is_train_finished]
 			unfinished_test = test[~is_test_finished]
 			
 			# print "\t%d/%d unfinished train" % (len(unfinished_train), len(train))
 			# print "\t%d/%d unfinished test" % (len(unfinished_test), len(test))
 
-			# combine all the key functions so far
-			key_fns = [all_key_fns[l] for l in levels]
-			max_keys = []
-			for key_fn in key_fns:
-				train_keys, test_keys = densify(key_fn(unfinished_train), key_fn(unfinished_test))
-				max_keys.append( max(np.max(train_keys), np.max(test_keys)) )
-			combined_fn = combine(key_fns, max_keys)
+			# add in the latest key on the unfinished data.
+			key_fn = all_key_fns[level]
+			single_train_keys = key_fn(unfinished_train)
+			single_test_keys = key_fn(unfinished_test)
+			single_max_key = max(np.max(single_train_keys), np.max(single_test_keys))
 
-			# apply the combined functions
-			train_keys, test_keys = densify(combined_fn(unfinished_train), combined_fn(unfinished_test))
+			# combine with the previous keys by shifting them out of the way
+			# print "\tshifting by single max key:", single_max_key
+			train_keys = (train_keys.astype(np.int64) + 1) * (single_max_key + 1) + single_train_keys.astype(np.int64)
+			test_keys = (test_keys.astype(np.int64) + 1) * (single_max_key + 1) + single_test_keys.astype(np.int64)
+
+			if np.any(train_keys < 0) or np.any(test_keys < 0):
+				print train_keys.dtype, test_keys.dtype
+				raise Exception("Overflow! Need to prepare with extra densifies")
+
+			# re-densify
+			train_keys, test_keys = densify(train_keys, test_keys)
 			max_key = max(np.max(train_keys), np.max(test_keys))
+			# print "\tnew combined max key", max_key
 			counts, avgs = counts_and_avgs(train_keys, unfinished_train.net_sales.values, max_group = max_key)
-
-			# print "\tmax key:", max_key
 
 			# check resulting sizes
 			new_group_finished = (counts <= max_group_size)
@@ -88,12 +118,9 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 			# print "\t%d/%d trains just finished" % (np.count_nonzero(new_train_finished), len(new_train_finished))
 			# print "\t%d/%d tests just finished" % (np.count_nonzero(new_test_finished), len(new_test_finished))
 
-			# if a test key has count 0, then we went too deep... we actually want to use the estimate on the previous level.
-			# n.b. we could just keep going deeper until this happens to everyone!
-			#
 			new_test_is_nan = (counts[test_keys] == 0)
 			# print "\t%d/%d test keys became nan at this level; will lock in previous estimate (or 0)" % (
-				# np.count_nonzero(new_test_is_nan), len(test_keys))
+			# 	np.count_nonzero(new_test_is_nan), len(test_keys))
 
 			# add the newly-finished avgs to original indices
 			mask = avgs[test_keys]
@@ -107,6 +134,10 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 			is_train_finished[~is_train_finished] = new_train_finished
 			is_test_finished[~is_test_finished] = new_test_finished
 
+			# drop the finished keys
+			train_keys = train_keys[~new_train_finished]
+			test_keys = test_keys[~new_test_finished]
+
 		# print "all done!"
 		# unfinished_train = train[~is_train_finished] # TODO: remove
 		# unfinished_test = test[~is_test_finished] # TODO: remove
@@ -115,8 +146,10 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 		# print "\t%d/%d final_avgs are nonzero" % (np.count_nonzero(final_avgs), len(final_avgs))
 		if np.any(np.isnan(final_avgs)): 
 			raise ValueError("This feature shouldn't have any NaN values")
+		if np.any(final_avgs < 0):
+			raise ValueError("This feature shouldn't have any negative values")
 
-		return final_avgs
+		return final_avgs.astype(np.float32)
 	return (name, f)
 
 def combine(key_fns, max_keys):
