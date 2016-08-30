@@ -14,9 +14,9 @@ def densify(*arrays):
 		if len(a) <= 0: raise ValueError("Empty array in " + str(arrays))
 	x = np.hstack(arrays)
 
-	print "\tdensifying %d values..." % len(x)
+	# print "\tdensifying %d values..." % len(x)
 	uniques, indices = np.unique(x, return_inverse=True)
-	print "\tmapped to range(%d)" % len(uniques)
+	# print "\tmapped to range(%d)" % len(uniques)
 
 	if len(arrays) == 1: return indices
 

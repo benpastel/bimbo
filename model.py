@@ -13,7 +13,8 @@ import tensorflow as tf
 
 from data import *
 from visualize import print_importances
-from features import feature_defs
+from partitioning import partition_feature_defs
+# from features import feature_defs
 
 IMPUTE_VALUE = -1
 MAX_DEV_SAMPLES_PER_MODEL = 100 * 1000
@@ -31,7 +32,7 @@ class NN:
 
 # kicking up the n_estimator seems to be helpful, but slows things down a lot
 L1_MODELS = [
-	("Neural Net", NN()),
+	# ("Neural Net", NN()),
 	("xgb shallow fat", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
 		max_depth=3, n_estimators=500)),
 	("xgb deep skinny", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=40.0, min_child_weight=100, 
@@ -48,7 +49,8 @@ def predict(train, test, clients, products, is_dev):
 	fit_samples = 1000 * 1000 if is_dev else 5000 * 1000
 	dev_samples = 1000 * 1000
 
-	defs = feature_defs(clients, products)
+	# defs = feature_defs(clients, products)
+	defs = partition_feature_defs(clients, products)
 
 	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples, is_dev)
 	if is_dev:
@@ -61,7 +63,7 @@ def predict(train, test, clients, products, is_dev):
 	toc = datetime.datetime.now()
 	feature_time = toc - tic
 
-	L1s, L2, rmse = fit(fit_X, fit_Y)
+	L1s, L2, rmse = fit(fit_X, fit_Y, defs)
 	tic = datetime.datetime.now()
 	fit_time = tic - toc
 
@@ -102,7 +104,7 @@ def model_predict(X, L1s, L2):
 	print "\tL2 prediction"
 	return L2.predict(inter)
 
-def fit(X, Y):
+def fit(X, Y, feature_defs):
 	model_count = len(L1_MODELS) + 1
 	Xs = split(model_count, X)
 	Ys = split(model_count, Y)
@@ -132,6 +134,9 @@ def fit(X, Y):
 	fit_out = L2.predict(inter)
 	rmse = RMSE(Y, fit_out)
 	print "\tRMSE: %.3f fit" % rmse
+
+	print "Feature importances of 1st model:"
+	print print_importances(L1s[0], feature_defs)
 	
 	print "L2 coefficients:"
 	for i, (name, _) in enumerate(L1_MODELS):
