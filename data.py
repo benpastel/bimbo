@@ -46,6 +46,11 @@ def counts_and_avgs(groups, values, max_group=None):
 		return counts, out
 	return counts, avgs
 
+def find_counts(groups):
+	if isinstance(groups, pd.Series): groups = groups.values
+	assert_ndarray(groups)
+	return np.bincount(groups)
+
 def load_data():
 	train_cols = (
 		"week",

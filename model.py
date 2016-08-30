@@ -9,7 +9,7 @@ from sklearn.svm import SVR
 from sklearn.linear_model import LinearRegression, Ridge, BayesianRidge, SGDRegressor, LassoCV
 from sklearn import preprocessing
 
-import tensorflow as tf
+# import tensorflow as tf
 
 from data import *
 from visualize import print_importances
@@ -19,16 +19,16 @@ from features import feature_defs
 IMPUTE_VALUE = -1
 MAX_DEV_SAMPLES_PER_MODEL = 100 * 1000
 
-class NN:
-	def __init__(self):
-		self.net = tf.contrib.learn.DNNRegressor(hidden_units=[20, 5], dropout=0.1)
+# class NN:
+# 	def __init__(self):
+# 		self.net = tf.contrib.learn.DNNRegressor(hidden_units=[20, 5], dropout=0.1)
 
-	def fit(self, X, Y):
-		self.net = self.net.fit(X, Y, steps=1000)
-		return self
+# 	def fit(self, X, Y):
+# 		self.net = self.net.fit(X, Y, steps=1000)
+# 		return self
 
-	def predict(self, X):
-		return self.net.predict(X, batch_size=100)
+# 	def predict(self, X):
+# 		return self.net.predict(X, batch_size=100)
 
 # kicking up the n_estimator seems to be helpful, but slows things down a lot
 L1_MODELS = [

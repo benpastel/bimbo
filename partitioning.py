@@ -29,6 +29,7 @@ def clientname_hash_fn(clients):
 			CLIENTNAME_HASHES[keys[i]] = hashes[i]
 	return lambda frame: CLIENTNAME_HASHES[frame.client_key.values]
 
+MAX_PARTITION_LEVELS = 6
 def partition_feature_defs(clients, products):
 	all_key_fns = {
 		"clientname": clientname_hash_fn(clients),
@@ -57,11 +58,11 @@ def partition_feature_defs(clients, products):
 	return feats
 
 def make_partition_feature(level_order, all_key_fns, max_group_size):
-	name = "partition_" + str(max_group_size) + "_" + "_".join(level_order)
+	name = "partition_" + str(max_group_size) + "_" + "_".join(level_order[0:MAX_PARTITION_LEVELS])
 
 	def f(train, test):
-		is_train_finished = np.zeros((len(train), ), dtype=np.bool)
-		is_test_finished = np.zeros((len(test), ), dtype=np.bool)
+		is_train_unfinished = np.ones((len(train), ), dtype=np.bool)
+		is_test_unfinished = np.ones((len(test), ), dtype=np.bool)
 		final_avgs = np.zeros((len(test), ), dtype=np.float32)
 
 		train_keys = np.zeros((len(train), ), dtype=np.int64)
@@ -69,9 +70,9 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 
 		level_count = 0
 		levels = []
-		while (level_count < len(level_order) 
-			and np.count_nonzero(is_train_finished) < len(train) 
-			and np.count_nonzero(is_test_finished) < len(test)):
+		while (level_count < MAX_PARTITION_LEVELS
+			and np.any(is_train_unfinished) 
+			and np.any(is_test_unfinished)):
 		
 			level = level_order[level_count]
 			level_count += 1
@@ -79,94 +80,55 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 
 			print "\tpartioning on", level
 
-			unfinished_train = train[~is_train_finished]
-			unfinished_test = test[~is_test_finished]
-			
-			# print "\t%d/%d unfinished train" % (len(unfinished_train), len(train))
-			# print "\t%d/%d unfinished test" % (len(unfinished_test), len(test))
-
-			# add in the latest key on the unfinished data.
+			# extract the latest key
 			key_fn = all_key_fns[level]
-			single_train_keys = key_fn(unfinished_train)
-			single_test_keys = key_fn(unfinished_test)
-			single_max_key = max(np.max(single_train_keys), np.max(single_test_keys))
+			new_train_keys = is_train_unfinished * key_fn(train)
+			new_test_keys = is_test_unfinished * key_fn(test)
 
-			# combine with the previous keys by shifting them out of the way
-			# print "\tshifting by single max key:", single_max_key
-			train_keys = (train_keys.astype(np.int64) + 1) * (single_max_key + 1) + single_train_keys.astype(np.int64)
-			test_keys = (test_keys.astype(np.int64) + 1) * (single_max_key + 1) + single_test_keys.astype(np.int64)
+			# TODO: probably need this densify...
+			# new_train_keys, new_test_keys = densify(new_train_keys, new_test_keys)
+		
+			# shift previous keys out of the way
+			shift = max(np.max(new_train_keys), np.max(new_test_keys)) + 1
+			# print "\t\tshift:", shift
+			train_keys = train_keys.astype(np.int64) * shift + (new_train_keys + 1)
+			test_keys = test_keys.astype(np.int64) * shift + (new_test_keys + 1)
 
 			if np.any(train_keys < 0) or np.any(test_keys < 0):
 				print train_keys.dtype, test_keys.dtype
-				raise Exception("Overflow! Need to prepare with extra densifies")
+				raise Exception("Overflow! Guess we need densify() after all :(")
 
-			# re-densify
+			# check whether the unfinished groups are now small enough by collapsing all finished keys to 0
 			train_keys, test_keys = densify(train_keys, test_keys)
 			max_key = max(np.max(train_keys), np.max(test_keys))
-			# print "\tnew combined max key", max_key
-			counts, avgs = counts_and_avgs(train_keys, unfinished_train.net_sales.values, max_group = max_key)
+			counts, avgs = counts_and_avgs(train_keys, train.net_sales.values, max_key)
 
-			# check resulting sizes
-			new_group_finished = (counts <= max_group_size)
+			new_group_unfinished = (counts > max_group_size)
+			# print "\t\t%d/%d new groups unfinished (+/- 1)" % (np.count_nonzero(new_group_unfinished), len(new_group_unfinished))
 
-			# print "\t%d/%d new groups finished (< max size)" % (np.count_nonzero(new_group_finished), len(new_group_finished))
+			test_is_nan = (counts[test_keys] == 0)
+			# print "\t\t%d/%d test keys became nan; keeping previous estimate (or 0)" % (np.count_nonzero(test_is_nan), len(test))
+			is_test_unfinished &= ~test_is_nan
 
-			# these masks are indexed on the unfinished data
-			new_train_finished = new_group_finished[train_keys]
-			new_test_finished = new_group_finished[test_keys]
+			final_avgs[is_test_unfinished] = avgs[test_keys][is_test_unfinished]
 
-			# print "\t%d/%d trains just finished" % (np.count_nonzero(new_train_finished), len(new_train_finished))
-			# print "\t%d/%d tests just finished" % (np.count_nonzero(new_test_finished), len(new_test_finished))
+			is_train_unfinished &= new_group_unfinished[train_keys]
+			is_test_unfinished &= new_group_unfinished[test_keys]
 
-			new_test_is_nan = (counts[test_keys] == 0)
-			# print "\t%d/%d test keys became nan at this level; will lock in previous estimate (or 0)" % (
-			# 	np.count_nonzero(new_test_is_nan), len(test_keys))
+			train_keys *= is_train_unfinished 		
+			test_keys *= is_test_unfinished
 
-			# add the newly-finished avgs to original indices
-			mask = avgs[test_keys]
-			mask[~new_test_finished] = 0 # don't update anything that's not finished
-			mask[new_test_is_nan] = 0 # don't update anything that became NaN
-			final_avgs[~is_test_finished] += mask
+			# print "\t\t%d/%d trains unfinished" % (np.count_nonzero(is_train_unfinished), len(train))
+			# print "\t\t%d/%d tests unfinished" % (np.count_nonzero(is_test_unfinished), len(test))
 
-			# print "\t%d/%d final_avgs are nonzero" % (np.count_nonzero(final_avgs), len(final_avgs))
-
-			# update masks for the original indices
-			is_train_finished[~is_train_finished] = new_train_finished
-			is_test_finished[~is_test_finished] = new_test_finished
-
-			# drop the finished keys
-			train_keys = train_keys[~new_train_finished]
-			test_keys = test_keys[~new_test_finished]
-
-		# print "all done!"
-		# unfinished_train = train[~is_train_finished] # TODO: remove
-		# unfinished_test = test[~is_test_finished] # TODO: remove
-		# print "\t%d/%d unfinished train" % (len(unfinished_train), len(train))
-		# print "\t%d/%d unfinished test" % (len(unfinished_test), len(test)) 
-		# print "\t%d/%d final_avgs are nonzero" % (np.count_nonzero(final_avgs), len(final_avgs))
+		# print "\t\t%d/%d final_avgs are nonzero" % (np.count_nonzero(final_avgs), len(final_avgs))
 		if np.any(np.isnan(final_avgs)): 
 			raise ValueError("This feature shouldn't have any NaN values")
 		if np.any(final_avgs < 0):
 			raise ValueError("This feature shouldn't have any negative values")
 
-		return final_avgs.astype(np.float32)
+		return final_avgs
 	return (name, f)
-
-def combine(key_fns, max_keys):
-	def fn(frame):
-		# apply the first key
-		vals = key_fns[0](frame).astype(np.int64)
-
-		for i in range(1, len(key_fns)):
-
-			# shift the result so far out of the way
-			vals = (vals + 1) * (max_keys[i] + 1)
-
-			# add the next key
-			vals += key_fns[i](frame).astype(np.int64)
-		return vals
-
-	return fn
 
 
 

@@ -9,6 +9,7 @@ from partitioning import partition_feature_defs, as_fn, clientname_hash_fn
 def feature_defs(clients, products):
 	print "preparing feature definitions"
 	return (
+		partition_feature_defs(clients, products) + 
 		client_features(clients)
 		+ pairwise_factor_features(clients, products)
 		+ pair_key_features(clients, products) 
@@ -17,7 +18,6 @@ def feature_defs(clients, products):
 			("last_nonzero_sale", last_nonzero_logsale),
 			("sale_last_week", logsale_last_week)
 		]
-		+ partition_feature_defs(clients, products)
 		)
 
 def client_features(clients):
