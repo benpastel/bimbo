@@ -41,20 +41,65 @@ def partition_feature_defs(clients, products):
 	}
 
 	feats = []
-	random.seed(1)
-	possible_levels = all_key_fns.keys()
+	# random.seed(1)
+	# possible_levels = all_key_fns.keys()
 
-	for trial in range(10):
-		random.shuffle(possible_levels)
-		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 100))
+	# for trial in range(10):
+	# 	random.shuffle(possible_levels)
+	# 	feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 100))
 
-	for trial in range(10):
-		random.shuffle(possible_levels)
-		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 300))
+	# for trial in range(10):
+	# 	random.shuffle(possible_levels)
+	# 	feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 300))
 
-	for trial in range(10):
-		random.shuffle(possible_levels)
-		feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 1000))
+	# for trial in range(10):
+	# 	random.shuffle(possible_levels)
+	# 	feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 1000))
+
+	# print "*** should be ec2 trial only ***"
+	# for trial in range(20):
+	# 	random.shuffle(possible_levels)
+	# 	feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 500))
+
+	# for trial in range(20):
+	# 	random.shuffle(possible_levels)
+	# 	feats.append(make_partition_feature([l for l in possible_levels], all_key_fns, 2000))
+
+	good_results = [
+		('partition_100_channel_product_client_depot_clientname_route', 243),
+		('partition_1000_channel_product_depot_route_clientname_client', 181),
+		('partition_300_route_depot_product_client_channel_clientname', 121),
+		('partition_300_product_client_channel_clientname_route_depot', 85),
+		('partition_1000_route_depot_channel_client_product_clientname', 59),
+		('partition_300_depot_product_clientname_client_route_channel', 58),
+		('partition_100_client_channel_clientname_depot_route_product', 53),
+		('partition_1000_channel_product_route_client_depot_clientname', 49),
+		('partition_100_client_product_route_depot_clientname_channel', 47),
+		('partition_300_route_client_channel_clientname_product_depot', 38),
+		('partition_300_client_product_route_depot_clientname_channel', 31),
+		('partition_100_channel_depot_client_clientname_product_route', 26),
+		('partition_100_channel_depot_route_client_clientname_product', 22),
+		('partition_300_client_depot_clientname_channel_route_product', 21),
+		('partition_100_route_client_channel_clientname_depot_product', 20),
+		('partition_1000_client_channel_product_route_depot_clientname', 20),
+		('partition_1000_channel_clientname_client_depot_product_route', 15),
+		('partition_1000_channel_depot_clientname_route_client_product', 15),
+		('partition_100_client_depot_clientname_channel_product_route', 14),
+		('partition_100_clientname_route_product_depot_client_channel', 13),
+		('partition_100_product_clientname_client_depot_route_channel', 13),
+		('partition_1000_clientname_product_route_channel_client_depot', 10),
+		('partition_1000_clientname_depot_channel_client_route_product', 10),
+		('partition_300_product_clientname_route_client_depot_channel', 9),
+		('partition_300_clientname_product_client_channel_depot_route', 7),
+		('partition_300_product_channel_route_clientname_client_depot', 6),
+		('partition_300_channel_clientname_product_client_route_depot', 4),
+		('partition_1000_clientname_product_route_depot_client_channel', 3),
+		('partition_1000_clientname_depot_client_product_route_channel', 2),
+	]
+	for (name, _) in good_results:
+		_, size, level_string = name.split('_', 2)
+		levels = level_string.split('_')
+		feats.append(make_partition_feature(levels, all_key_fns, int(size)))
 	return feats
 
 def make_partition_feature(level_order, all_key_fns, max_group_size):
@@ -85,21 +130,24 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 			new_train_keys = is_train_unfinished * key_fn(train)
 			new_test_keys = is_test_unfinished * key_fn(test)
 
-			# TODO: probably need this densify...
+			# TODO: need this densify?
 			# new_train_keys, new_test_keys = densify(new_train_keys, new_test_keys)
 		
 			# shift previous keys out of the way
 			shift = max(np.max(new_train_keys), np.max(new_test_keys)) + 1
+
 			# print "\t\tshift:", shift
-			train_keys = train_keys.astype(np.int64) * shift + (new_train_keys + 1)
-			test_keys = test_keys.astype(np.int64) * shift + (new_test_keys + 1)
+			train_keys *= is_train_unfinished * shift
+			test_keys *= is_test_unfinished * shift
+			train_keys += (new_train_keys + 1)
+			test_keys += (new_test_keys + 1)
 
 			if np.any(train_keys < 0) or np.any(test_keys < 0):
 				print train_keys.dtype, test_keys.dtype
 				raise Exception("Overflow! Guess we need densify() after all :(")
 
 			# check whether the unfinished groups are now small enough by collapsing all finished keys to 0
-			train_keys, test_keys = densify(train_keys, test_keys)
+			train_keys, test_keys = densify64(train_keys, test_keys)
 			max_key = max(np.max(train_keys), np.max(test_keys))
 			counts, avgs = counts_and_avgs(train_keys, train.net_sales.values, max_key)
 
@@ -115,8 +163,8 @@ def make_partition_feature(level_order, all_key_fns, max_group_size):
 			is_train_unfinished &= new_group_unfinished[train_keys]
 			is_test_unfinished &= new_group_unfinished[test_keys]
 
-			train_keys *= is_train_unfinished 		
-			test_keys *= is_test_unfinished
+			# train_keys *= is_train_unfinished 		
+			# test_keys *= is_test_unfinished
 
 			# print "\t\t%d/%d trains unfinished" % (np.count_nonzero(is_train_unfinished), len(train))
 			# print "\t\t%d/%d tests unfinished" % (np.count_nonzero(is_test_unfinished), len(test))

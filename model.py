@@ -18,6 +18,7 @@ from features import feature_defs
 
 IMPUTE_VALUE = -1
 MAX_DEV_SAMPLES_PER_MODEL = 100 * 1000
+MAX_TEST_SAMPLES_PER_MODEL = 800 * 1000
 
 # class NN:
 # 	def __init__(self):
@@ -30,17 +31,19 @@ MAX_DEV_SAMPLES_PER_MODEL = 100 * 1000
 # 	def predict(self, X):
 # 		return self.net.predict(X, batch_size=100)
 
-# kicking up the n_estimator seems to be helpful, but slows things down a lot
 L1_MODELS = [
-	# ("Neural Net", NN()),
-	("xgb shallow fat", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
-		max_depth=3, n_estimators=500)),
-	("xgb deep skinny", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=40.0, min_child_weight=100, 
-		max_depth=12, n_estimators=50)),
-	("xgb middle", XGBRegressor(subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
-		max_depth=5, n_estimators=200)),
+	("xgb shallow fat", XGBRegressor(subsample=0.95, learning_rate = 0.15, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
+		max_depth=3, n_estimators=250)),
+	("xgb deep skinny", XGBRegressor(subsample=0.95, learning_rate = 0.15, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=40.0, min_child_weight=100, 
+		max_depth=12, n_estimators=25)),
+	("xgb middle", XGBRegressor(subsample=0.95, learning_rate = 0.15, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
+		max_depth=5, n_estimators=100)),
+	# ("xgb shallow fat fast", XGBRegressor(, subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=10.0, min_child_weight=60, 
+	# 	max_depth=3, n_estimators=500)),
+	# ("xgb deep skinny slow", XGBRegressor(learning_rate = 0.08, subsample=0.95, base_score=np.log(4.0), reg_lambda=0.0, reg_alpha=40.0, min_child_weight=100, 
+	# 	max_depth=12, n_estimators=50)),
 ]
-L2_MODEL = LassoCV()
+L2_MODEL = LinearRegression()
 
 def predict(train, test, clients, products, is_dev):
 	tic = datetime.datetime.now()
@@ -50,15 +53,21 @@ def predict(train, test, clients, products, is_dev):
 	dev_samples = 1000 * 1000
 
 	defs = feature_defs(clients, products)
-	# defs = partition_feature_defs(clients, products)
+
+	# print "preparing feature cache"
+	# generate_fit_features(defs, train, test, fit_samples, is_dev, throwaway=True)
+	# generate_test_features(defs, train, test, dev_samples, is_dev, throwaway=True)
 
 	fit_X, fit_Y = generate_fit_features(defs, train, test, fit_samples, is_dev)
+
+	# number of L1 models might have dropped since we cached features
+	# make sure we don't go too slow
 	if is_dev:
-		# number of L1 models might have dropped since we cached features
-		# make sure we don't go too slow
 		max_n = MAX_DEV_SAMPLES_PER_MODEL * (len(L1_MODELS) + 1)
-		fit_X = fit_X[0:max_n,:]
-		fit_Y = fit_Y[0:max_n]
+	else:
+		max_n = MAX_TEST_SAMPLES_PER_MODEL * (len(L1_MODELS) + 1)
+	fit_X = fit_X[0:max_n,:]
+	fit_Y = fit_Y[0:max_n]
 
 	toc = datetime.datetime.now()
 	feature_time = toc - tic
@@ -145,7 +154,7 @@ def fit(X, Y, feature_defs):
 
 	return L1s, L2, rmse
 
-def generate_test_features(feature_defs, train, test, test_samples, is_dev):
+def generate_test_features(feature_defs, train, test, test_samples, is_dev, throwaway=False):
 	print "generating test features"
 	if is_dev:
 		print "\tsampling down to %d test samples" % test_samples
@@ -156,9 +165,9 @@ def generate_test_features(feature_defs, train, test, test_samples, is_dev):
 		test_Y = None
 		path = "pickle/test_features/"
 
-	return generate_features(feature_defs, train, test, is_dev, path), test_Y
+	return generate_features(feature_defs, train, test, is_dev, path, throwaway), test_Y
 
-def generate_fit_features(feature_defs, train, test, fit_samples, is_dev):
+def generate_fit_features(feature_defs, train, test, fit_samples, is_dev, throwaway=False):
 	print "generating fit features"
 	print "\tsplitting train into pool & fit, sampling with fixed seed"
 	last_week = np.max(train.week.values)
@@ -171,24 +180,29 @@ def generate_fit_features(feature_defs, train, test, fit_samples, is_dev):
 		path = "pickle/fit_for_dev_features/"
 	else:
 		path = "pickle/fit_for_test_features/"
-	return generate_features(feature_defs, pool, fit, is_dev, path), fit.net_sales.values
+	return generate_features(feature_defs, pool, fit, is_dev, path, throwaway), fit.net_sales.values
 
-def generate_features(feature_defs, train, test, is_dev, save_dir):
+def generate_features(feature_defs, train, test, is_dev, save_dir, throwaway=False):
 	if not os.path.isdir(save_dir):
 		os.makedirs(save_dir)
 	feats = []
 	for name, fn in feature_defs:
 		path = save_dir + name
 		if os.path.isfile(path):
+			if throwaway: continue
 			print "loading feature:", name
 			feat = pickle.load(open(path, 'rb'))
 		else:
 			print "computing feature:", name
 			feat = fn(train, test).reshape(-1, 1)
 			
-			print "\tsaving (%d mb)" % (feat.nbytes / 1000000)
-			pickle.dump(feat, open(path, 'wb'))
-		feats.append(feat)
+			# print "\tsaving (%d mb)" % (feat.nbytes / 1000000)
+			# pickle.dump(feat, open(path, 'wb'))
+
+		if not throwaway:
+			feats.append(feat)
+	if throwaway: return None
+
 	X = np.hstack(feats)
 	nans = np.isnan(X)
 	print "\t replacing %d NaNs with %d" % (np.count_nonzero(nans), IMPUTE_VALUE)

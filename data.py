@@ -9,14 +9,29 @@ KEY_COLUMNS = [
 	"product"
 ]
 
+# TODO figure out dtype parameter vs. globbing
+def densify64(*arrays):
+	for a in arrays:
+		if len(a) <= 0: raise ValueError("Empty array in " + str(arrays))
+	x = np.hstack(arrays)
+
+	_, indices = np.unique(x, return_inverse=True)
+
+	if len(arrays) == 1: return indices
+
+	out = []
+	last_idx = 0
+	for a in arrays:
+		out.append(indices[last_idx:last_idx + len(a)].astype(np.int64))
+		last_idx += len(a)
+	return out
+
 def densify(*arrays):
 	for a in arrays:
 		if len(a) <= 0: raise ValueError("Empty array in " + str(arrays))
 	x = np.hstack(arrays)
 
-	# print "\tdensifying %d values..." % len(x)
-	uniques, indices = np.unique(x, return_inverse=True)
-	# print "\tmapped to range(%d)" % len(uniques)
+	_, indices = np.unique(x, return_inverse=True)
 
 	if len(arrays) == 1: return indices
 
@@ -39,12 +54,14 @@ def counts_and_avgs(groups, values, max_group=None):
 	sums = np.bincount(groups, values)
 	avgs = sums / counts
 	avgs[counts == 0] = np.nan
-	if max_group:
-		# pad the rest of the values with NaN
-		out = np.full(max_group + 1, np.nan)
-		out[:len(avgs)] = avgs
-		return counts, out
-	return counts, avgs
+	if not max_group: return counts, avgs
+
+	# pad the rest of the avgs with NaN and the counts with 0
+	pad_avgs = np.full(max_group + 1, np.nan)
+	pad_avgs[:len(avgs)] = avgs
+	pad_counts = np.zeros((max_group + 1, ), dtype=np.int32)
+	pad_counts[:len(counts)] = counts
+	return pad_counts, pad_avgs
 
 def find_counts(groups):
 	if isinstance(groups, pd.Series): groups = groups.values
