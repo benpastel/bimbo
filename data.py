@@ -50,23 +50,17 @@ def counts_and_avgs(groups, values, max_group=None):
 	if isinstance(values, pd.Series): values = values.values
 	assert_ndarray(groups); assert_ndarray(values)
 	if np.any(np.isnan(values)): raise ValueError("can't handle input NaNs in averaging")
-	counts = np.bincount(groups)
-	sums = np.bincount(groups, values)
+	counts = np.bincount(groups, minlength=(max_group + 1))
+	sums = np.bincount(groups, values, minlength=(max_group + 1))
 	avgs = sums / counts
 	avgs[counts == 0] = np.nan
-	if not max_group: return counts, avgs
-
-	# pad the rest of the avgs with NaN and the counts with 0
-	pad_avgs = np.full(max_group + 1, np.nan)
-	pad_avgs[:len(avgs)] = avgs
-	pad_counts = np.zeros((max_group + 1, ), dtype=np.int32)
-	pad_counts[:len(counts)] = counts
-	return pad_counts, pad_avgs
+	return counts, avgs
 
 def find_counts(groups):
 	if isinstance(groups, pd.Series): groups = groups.values
 	assert_ndarray(groups)
 	return np.bincount(groups)
+
 
 def load_data():
 	train_cols = (
